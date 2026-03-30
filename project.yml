@@ -1,0 +1,65 @@
+name: SousChef
+options:
+  bundleIdPrefix: com.souschef
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  SwiftSoup:
+    url: https://github.com/scinfu/SwiftSoup.git
+    from: "2.7.0"
+
+targets:
+  SousChef:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/SousChef
+    resources:
+      - path: Sources/SousChef/Resources
+        optional: true
+    dependencies:
+      - package: SwiftSoup
+      - sdk: CloudKit.framework
+      - sdk: Speech.framework
+      - sdk: AVFoundation.framework
+      - sdk: NaturalLanguage.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.souschef.app
+        PRODUCT_NAME: SousChef
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        DEVELOPMENT_TEAM: ""
+        INFOPLIST_FILE: Sources/SousChef/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: "NO"
+        ENABLE_PREVIEWS: "YES"
+        DEBUG_INFORMATION_FORMAT: dwarf
+        SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+      configs:
+        Release:
+          DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+    entitlements:
+      path: Sources/SousChef/SousChef.entitlements
+    scheme:
+      testTargets:
+        - SousChefTests
+
+  SousChefTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Tests/SousChefTests
+    dependencies:
+      - target: SousChef
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.souschef.tests
