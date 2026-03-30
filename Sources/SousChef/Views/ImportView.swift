@@ -185,6 +185,21 @@ struct ImportView: View {
         }
     }
 
+    private func friendlyError(_ error: Error) -> String {
+        let msg = error.localizedDescription.lowercased()
+        if msg.contains("offline") || msg.contains("network") || msg.contains("internet") ||
+           msg.contains("not connected") || msg.contains("connection") {
+            return "No internet connection. Check your network and try again."
+        }
+        if msg.contains("timed out") || msg.contains("timeout") {
+            return "The request timed out. The site may be slow — try again."
+        }
+        if msg.contains("not found") || msg.contains("404") {
+            return "Page not found. Check the URL and try again."
+        }
+        return "Something went wrong. Try a different URL or paste the recipe manually."
+    }
+
     private var sourceIcon: String {
         let cleaned = urlText.lowercased()
         if cleaned.contains("tiktok")     { return "video.fill" }
@@ -216,7 +231,7 @@ struct ImportView: View {
         } catch {
             await MainActor.run {
                 phase = .error
-                errorMessage = error.localizedDescription
+                errorMessage = friendlyError(error)
             }
         }
     }

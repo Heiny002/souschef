@@ -93,7 +93,10 @@ struct CookModeView: View {
                 Image(systemName: "xmark")
                     .foregroundStyle(Color.scTextSecondary)
                     .font(.system(size: 18, weight: .medium))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("Close Cook Mode")
             Spacer()
             Text(recipe.title)
                 .font(.scLabel)
@@ -104,7 +107,10 @@ struct CookModeView: View {
                 Image(systemName: "list.bullet")
                     .foregroundStyle(Color.scTextSecondary)
                     .font(.system(size: 18, weight: .medium))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("View Ingredients")
         }
     }
 
@@ -117,6 +123,7 @@ struct CookModeView: View {
                     .animation(.easeInOut(duration: 0.2), value: currentStepIndex)
             }
         }
+        .accessibilityLabel("Step \(currentStepIndex + 1) of \(sortedSteps.count)")
     }
 
     private func stepText(step: CookingStep) -> some View {
@@ -150,6 +157,7 @@ struct CookModeView: View {
                     .foregroundStyle(isFirstStep ? Color.scTextSecondary.opacity(0.3) : Color.scTextPrimary)
             }
             .disabled(isFirstStep)
+            .accessibilityLabel("Previous step")
 
             Spacer()
 

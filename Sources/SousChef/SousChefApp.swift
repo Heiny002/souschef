@@ -17,7 +17,7 @@ struct SousChefApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
         }
         .modelContainer(modelContainer)
     }

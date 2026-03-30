@@ -112,6 +112,7 @@ struct RecipeLibraryView: View {
                 Image(systemName: "arrow.up.arrow.down")
                     .foregroundStyle(Color.scTextPrimary)
             }
+            .accessibilityLabel("Sort recipes")
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button {
@@ -120,6 +121,7 @@ struct RecipeLibraryView: View {
                 Image(systemName: "plus")
                     .foregroundStyle(Color.scAccent)
             }
+            .accessibilityLabel("Import recipe")
         }
     }
 }
