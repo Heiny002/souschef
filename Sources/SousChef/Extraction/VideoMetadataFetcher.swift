@@ -5,6 +5,7 @@ import Foundation
 struct VideoMetadata {
     let title: String?
     let authorName: String?
+    let authorURL: String?    // SC-071: Creator's profile URL from oEmbed
     let caption: String?      // Often contains recipe outline
     let thumbnailURL: String?
 }
@@ -69,10 +70,30 @@ actor VideoMetadataFetcher {
 
         guard caption != nil || title != nil else { throw VideoMetadataError.malformedResponse }
 
+        // Try to extract author profile URL from og:url → derive profile from reel path
+        let authorURL: String? = {
+            guard let ogURL = extractOGContent(from: html, property: "og:url"),
+                  let parsed = URL(string: ogURL),
+                  parsed.host?.contains("instagram.com") == true else { return nil }
+            // Reel URL format: /reel/XXX/ — creator profile is in page HTML elsewhere
+            // Try to find profile link in the HTML
+            let profilePattern = #"instagram\.com/([A-Za-z0-9_.]+)/?"#
+            if let re = try? NSRegularExpression(pattern: profilePattern),
+               let match = re.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+               let range = Range(match.range(at: 1), in: html) {
+                let username = String(html[range])
+                if username != "reel" && username != "p" && username != "explore" {
+                    return "https://www.instagram.com/\(username)/"
+                }
+            }
+            return nil
+        }()
+
         return VideoMetadata(
             title: title,
             authorName: nil,
-            caption: caption ?? title,   // Reels put caption in og:description
+            authorURL: authorURL,
+            caption: caption ?? title,
             thumbnailURL: thumb
         )
     }
@@ -114,6 +135,7 @@ actor VideoMetadataFetcher {
         // YouTube puts the video title in "title" and description isn't returned via oEmbed
         let title = dict["title"] as? String
         let authorName = dict["author_name"] as? String
+        let authorURL = dict["author_url"] as? String  // SC-071
 
         // TikTok puts the full caption (often with recipe) in "title"
         // We treat it as caption since it's the closest we get without transcription
@@ -124,6 +146,7 @@ actor VideoMetadataFetcher {
         return VideoMetadata(
             title: title,
             authorName: authorName,
+            authorURL: authorURL,
             caption: caption,
             thumbnailURL: thumbnailURL
         )

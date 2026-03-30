@@ -21,20 +21,21 @@ actor ExtractionPipeline {
     }
 
     /// Extract a recipe from a URL. Returns the best result found across all layers.
-    func extract(from urlString: String) async throws -> ExtractionResult {
+    /// The optional `progress` callback receives status text for UI updates during multi-step extraction.
+    func extract(from urlString: String, progress: (@Sendable (String) -> Void)? = nil) async throws -> ExtractionResult {
         let sourceType = URLRouter.classify(urlString)
 
         switch sourceType {
         case .webPage:
             return try await extractFromWebPage(urlString: urlString)
         case .tikTok, .instagram, .youTube:
-            return await extractFromVideo(urlString: urlString)
+            return await extractFromVideo(urlString: urlString, progress: progress)
         }
     }
 
     // MARK: - Video Extraction Chain
 
-    private func extractFromVideo(urlString: String) async -> ExtractionResult {
+    private func extractFromVideo(urlString: String, progress: (@Sendable (String) -> Void)? = nil) async -> ExtractionResult {
         let metadataFetcher = VideoMetadataFetcher()
 
         // Step 1: oEmbed for caption / title (free, no auth)
@@ -43,29 +44,67 @@ actor ExtractionPipeline {
         let titleHint = metadata?.title
 
         // Step 2: Try transcript endpoint (may be unavailable / server down)
-        var transcriptText: String? = nil
-        if let videoTranscript = try? await TranscriptFetcher.shared.fetchTranscript(videoURL: urlString) {
-            transcriptText = videoTranscript.combinedText
+        var videoTranscript: VideoTranscript?
+        if let vt = try? await TranscriptFetcher.shared.fetchTranscript(videoURL: urlString) {
+            videoTranscript = vt
         }
 
+        // Step 2.5: SC-074 — Bio Link Resolution (deterministic, zero LLM tokens)
+        let allCaptionText = [videoTranscript?.caption, captionText]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+        let signal = CaptionAnalyzer.analyze(allCaptionText)
+
+        switch signal {
+        case .directURL(let recipeURL):
+            progress?("Following recipe link…")
+            if let webResult = try? await extractFromWebPage(urlString: recipeURL),
+               webResult.isViable {
+                return webResult
+            }
+
+        case .linkInBio:
+            progress?("Finding creator's blog…")
+            if let blogURL = await BioLinkResolver.shared.resolve(
+                authorName: metadata?.authorName,
+                authorURL: metadata?.authorURL,
+                serverBlogURL: videoTranscript?.blogURL
+            ) {
+                progress?("Searching for recipe…")
+                let keywords = CaptionAnalyzer.extractKeywords(
+                    from: allCaptionText, using: FoodDictionary.shared)
+                if !keywords.isEmpty,
+                   let recipePageURL = await BlogRecipeSearch.search(
+                    blogURL: blogURL, keywords: keywords) {
+                    progress?("Extracting recipe…")
+                    if let webResult = try? await extractFromWebPage(urlString: recipePageURL),
+                       webResult.isViable {
+                        return webResult  // Zero LLM tokens — blog has Schema.org
+                    }
+                }
+            }
+
+        case .none:
+            break
+        }
+
+        // Step 3: Layer 5 — rule-based NLP on transcript (existing, unchanged)
+        let transcriptText = videoTranscript?.combinedText
         let fullText = [transcriptText, captionText].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
 
         guard !fullText.isEmpty else {
-            // No text at all — server down + no oEmbed caption
             var empty = ExtractionResult(extractionMethod: "video-no-transcript")
             empty.title = titleHint
             empty.confidence = 0.1
             return empty
         }
 
-        // Step 3: Layer 5 — rule-based NLP on transcript
+        progress?("Analyzing transcript…")
         var result = TranscriptExtractor().extract(transcript: fullText)
         if result.title == nil { result.title = titleHint }
 
         guard result.confidence < ConfidenceThreshold.accept else { return result }
 
         // Step 4: Layer 6 — LLM validation / fallback
-        // Gracefully degrade if no API key configured
         guard let apiKey = Bundle.main.infoDictionary?["ANTHROPIC_API_KEY"] as? String,
               !apiKey.isEmpty else {
             return result

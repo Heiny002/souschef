@@ -10,6 +10,7 @@ struct ImportView: View {
     @State private var extractionResult: ExtractionResult?
     @State private var errorMessage: String?
     @State private var showReview = false
+    @State private var statusText = ""  // SC-075: dynamic progress from bio link resolution
 
     enum ImportPhase: Equatable {
         case idle
@@ -119,7 +120,7 @@ struct ImportView: View {
         case .fetching:
             progressRow(label: "Fetching page…", icon: "arrow.down.circle")
         case .extracting:
-            progressRow(label: "Extracting recipe…", icon: "wand.and.sparkles")
+            progressRow(label: statusText.isEmpty ? "Extracting recipe…" : statusText, icon: "wand.and.sparkles")
         case .done:
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
@@ -213,11 +214,17 @@ struct ImportView: View {
         guard !url.isEmpty else { return }
 
         errorMessage = nil
+        statusText = ""
         phase = .fetching
 
         let pipeline = ExtractionPipeline()
         do {
-            let result = try await pipeline.extract(from: url)
+            let result = try await pipeline.extract(from: url) { status in
+                Task { @MainActor in
+                    self.statusText = status
+                    if self.phase == .fetching { self.phase = .extracting }
+                }
+            }
             await MainActor.run {
                 if result.isViable {
                     extractionResult = result
