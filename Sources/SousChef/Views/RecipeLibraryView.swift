@@ -40,6 +40,9 @@ struct RecipeLibraryView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar { toolbarItems }
             .searchable(text: $searchText, prompt: "Search recipes")
+            .sheet(isPresented: $showImportSheet) {
+                ImportView()
+            }
         }
     }
 
