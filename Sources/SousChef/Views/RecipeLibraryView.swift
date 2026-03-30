@@ -209,6 +209,7 @@ struct RecipeDetailView: View {
     let recipe: Recipe
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @State private var showCookMode = false
 
     var body: some View {
         ZStack {
@@ -289,6 +290,21 @@ struct RecipeDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.scBackground, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            if !recipe.steps.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showCookMode = true
+                    } label: {
+                        Label("Cook", systemImage: "flame.fill")
+                            .foregroundStyle(Color.scAccent)
+                    }
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showCookMode) {
+            CookModeView(recipe: recipe)
+        }
     }
 
     private func sectionHeader(_ title: String, icon: String) -> some View {
