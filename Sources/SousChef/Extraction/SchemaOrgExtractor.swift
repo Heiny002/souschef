@@ -102,6 +102,10 @@ struct SchemaOrgExtractor {
             result.appliances = tools.compactMap { ($0 as? String)?.htmlDecoded }
         }
 
+        // Appliance detection from ingredients + steps
+        let textForAppliances = result.ingredients.map { $0.text } + result.steps.map { $0.text }
+        result.appliances = ApplianceDetector.detect(in: textForAppliances)
+
         // Confidence scoring
         result.confidence = computeConfidence(result)
         return result

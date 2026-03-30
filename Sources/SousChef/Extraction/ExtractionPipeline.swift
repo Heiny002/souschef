@@ -48,12 +48,38 @@ actor ExtractionPipeline {
             return layer1
         }
 
-        // Layer 2: Microdata — stub (SC-020)
-        // Layer 3: Heuristic HTML — stub (SC-021)
+        // Layer 2: Microdata
+        var layer2 = MicrodataExtractor().extract(html: html)
+        layer2 = merge(base: layer1, onto: layer2)
+        if layer2.confidence >= ConfidenceThreshold.accept {
+            return layer2
+        }
+
+        // Layer 3: Heuristic HTML
+        var layer3 = HeuristicExtractor().extract(html: html)
+        layer3 = merge(base: layer2, onto: layer3)
+        if layer3.confidence >= ConfidenceThreshold.reject {
+            return layer3
+        }
+
         // Layer 4: LLM fallback — stub (SC-030)
 
-        // Return best available result
-        return layer1
+        // Return best available result (highest confidence)
+        return [layer1, layer2, layer3].max(by: { $0.confidence < $1.confidence }) ?? layer3
+    }
+
+    /// Merge earlier-layer partial results into a later-layer result (fill gaps only).
+    private func merge(base: ExtractionResult, onto target: ExtractionResult) -> ExtractionResult {
+        var result = target
+        if result.title == nil { result.title = base.title }
+        if result.recipeYield == nil { result.recipeYield = base.recipeYield }
+        if result.prepTime == nil { result.prepTime = base.prepTime }
+        if result.cookTime == nil { result.cookTime = base.cookTime }
+        if result.totalTime == nil { result.totalTime = base.totalTime }
+        if result.ingredients.isEmpty { result.ingredients = base.ingredients }
+        if result.steps.isEmpty { result.steps = base.steps }
+        if result.appliances.isEmpty { result.appliances = base.appliances }
+        return result
     }
 
     /// Parse raw ingredients from an ExtractionResult using IngredientParser.
