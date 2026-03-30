@@ -28,6 +28,7 @@
 		6251B9CBA7B4C26920D74612 /* DinerProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC95E88D6EEEC8BD4D8AAFD /* DinerProfile.swift */; };
 		69E483A482520AFBBD85568C /* URLRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 895AC2D9349872A304AFDCB8 /* URLRouter.swift */; };
 		7274E8EDC53759AD77E62D48 /* ReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94514113B5418A9108E161B0 /* ReviewView.swift */; };
+		770096E2E77B7A0BE022D571 /* IngredientConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16D0A762330CBDCD94D938A7 /* IngredientConverter.swift */; };
 		7874CD4986594D8325900EC9 /* CompatibilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DE77EF4D3ED40987FB6DD69 /* CompatibilityView.swift */; };
 		78D5C4F0DD6AD2A9699D1F3A /* CookVoiceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCB137BC614BB39A69A9A813 /* CookVoiceController.swift */; };
 		80BCB22584CEDB191C379C16 /* TranscriptExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4868D168C7C6FA747AB44694 /* TranscriptExtractor.swift */; };
@@ -74,6 +75,7 @@
 		01DC8E8C8944E55C1F03DC6D /* LLMExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMExtractor.swift; sourceTree = "<group>"; };
 		07D492E365A4AB46C47203BF /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
 		1361638A120B61026F00DCC7 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		16D0A762330CBDCD94D938A7 /* IngredientConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngredientConverter.swift; sourceTree = "<group>"; };
 		1EE74A288B649F9B1FC783A7 /* Lora-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Lora-SemiBold.ttf"; sourceTree = "<group>"; };
 		2D75D10443D97C18648ED646 /* NaturalLanguage.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NaturalLanguage.framework; path = System/Library/Frameworks/NaturalLanguage.framework; sourceTree = SDKROOT; };
 		2DE77EF4D3ED40987FB6DD69 /* CompatibilityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompatibilityView.swift; sourceTree = "<group>"; };
@@ -161,6 +163,14 @@
 				5768393184279BC0D69AA160 /* Extraction */,
 			);
 			path = SousChefTests;
+			sourceTree = "<group>";
+		};
+		0C70B14397CB0F3F0BE592DE /* Conversion */ = {
+			isa = PBXGroup;
+			children = (
+				16D0A762330CBDCD94D938A7 /* IngredientConverter.swift */,
+			);
+			path = Conversion;
 			sourceTree = "<group>";
 		};
 		0F1FFA69352736BADD127C26 /* Views */ = {
@@ -285,6 +295,7 @@
 				9118C7EB140861CEAD591267 /* Info.plist */,
 				647EBB3413A511930A879E0C /* SousChef.entitlements */,
 				DBAFCDAE7424D9755D0E5CB1 /* SousChefApp.swift */,
+				0C70B14397CB0F3F0BE592DE /* Conversion */,
 				803AA4BCA1244F1779E5BD24 /* CookMode */,
 				61597B0BA0F54BB5FFAD5583 /* DesignSystem */,
 				A55B94175EF8C3AA7B5191E3 /* Diet */,
@@ -446,6 +457,7 @@
 				E0837A5412C3972BF9661253 /* HeuristicExtractor.swift in Sources */,
 				22C4C03883DB86E008BEF963 /* ISO8601DurationParser.swift in Sources */,
 				E12F6B6B1AF34AC660AB347C /* ImportView.swift in Sources */,
+				770096E2E77B7A0BE022D571 /* IngredientConverter.swift in Sources */,
 				5D1C602B043AD370184C67AE /* IngredientParser.swift in Sources */,
 				A023C66ED92EFC1D105BE252 /* LLMExtractor.swift in Sources */,
 				9E4BF5BA4F11E86F358EF5FF /* MicroStepSplitter.swift in Sources */,

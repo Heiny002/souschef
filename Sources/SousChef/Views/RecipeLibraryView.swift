@@ -214,6 +214,7 @@ struct RecipeDetailView: View {
     @Query private var allDiners: [DinerProfile]
     @State private var showCookMode = false
     @State private var showCompatibility = false
+    @State private var unitMode: UnitMode = .original
 
     var body: some View {
         ZStack {
@@ -243,12 +244,13 @@ struct RecipeDetailView: View {
 
                     // Ingredients
                     if !recipe.ingredients.isEmpty {
-                        sectionHeader("Ingredients", icon: "list.bullet")
+                        ingredientsSectionHeader
                         ForEach(recipe.ingredients.sorted(by: { $0.order < $1.order })) { ingredient in
-                            Text(ingredient.rawText)
+                            Text(IngredientConverter.display(ingredient, mode: unitMode))
                                 .font(.scBody)
                                 .foregroundStyle(Color.scTextPrimary)
                                 .padding(.vertical, Spacing.xs)
+                                .animation(.easeInOut(duration: 0.2), value: unitMode)
                         }
                     }
 
@@ -319,6 +321,48 @@ struct RecipeDetailView: View {
         }
         .sheet(isPresented: $showCompatibility) {
             CompatibilityView(recipe: recipe, diners: allDiners)
+        }
+    }
+
+    /// Ingredients header with inline unit-mode picker.
+    private var ingredientsSectionHeader: some View {
+        HStack(alignment: .center) {
+            Label("Ingredients", systemImage: "list.bullet")
+                .font(.scLabel)
+                .foregroundStyle(Color.scAccent)
+            Spacer()
+            Menu {
+                ForEach(UnitMode.allCases) { mode in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { unitMode = mode }
+                    } label: {
+                        Label(mode.rawValue, systemImage: mode.icon)
+                        if unitMode == mode {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: unitMode.icon)
+                        .font(.system(size: 11))
+                    Text(unitMode.rawValue)
+                        .font(.scCaption)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9))
+                }
+                .foregroundStyle(unitMode == .original ? Color.scTextSecondary : Color.scAccent)
+                .padding(.horizontal, Spacing.sm)
+                .padding(.vertical, 5)
+                .background(Color.scSurface)
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule().stroke(
+                        unitMode == .original ? Color.scBorder : Color.scAccent.opacity(0.5),
+                        lineWidth: 1
+                    )
+                )
+            }
         }
     }
 
