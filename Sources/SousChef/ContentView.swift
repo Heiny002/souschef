@@ -2,7 +2,13 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        RecipeLibraryView()
+        TabView {
+            RecipeLibraryView()
+                .tabItem { Label("Library", systemImage: "book.closed") }
+            DinerProfilesView()
+                .tabItem { Label("Diners", systemImage: "person.2") }
+        }
+        .tint(Color.scAccent)
     }
 }
 

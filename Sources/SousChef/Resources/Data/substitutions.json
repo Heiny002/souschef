@@ -1,0 +1,278 @@
+[
+  {
+    "ingredient": "butter",
+    "substitutions": [
+      {"reason": "dairy-free", "options": ["vegan butter", "coconut oil", "olive oil"]},
+      {"reason": "vegan", "options": ["vegan butter", "coconut oil", "olive oil"]},
+      {"reason": "keto", "options": null}
+    ]
+  },
+  {
+    "ingredient": "milk",
+    "substitutions": [
+      {"reason": "dairy-free", "options": ["oat milk", "almond milk", "coconut milk", "soy milk"]},
+      {"reason": "vegan", "options": ["oat milk", "almond milk", "coconut milk", "soy milk"]},
+      {"reason": "nut-free", "options": ["oat milk", "soy milk", "coconut milk"]}
+    ]
+  },
+  {
+    "ingredient": "heavy cream",
+    "substitutions": [
+      {"reason": "dairy-free", "options": ["coconut cream", "cashew cream", "oat cream"]},
+      {"reason": "vegan", "options": ["coconut cream", "cashew cream"]}
+    ]
+  },
+  {
+    "ingredient": "cheese",
+    "substitutions": [
+      {"reason": "dairy-free", "options": ["nutritional yeast", "cashew cheese", "vegan cheese"]},
+      {"reason": "vegan", "options": ["nutritional yeast", "cashew cheese", "vegan cheese"]}
+    ]
+  },
+  {
+    "ingredient": "egg",
+    "substitutions": [
+      {"reason": "vegan", "options": ["flax egg (1 tbsp ground flax + 3 tbsp water)", "chia egg", "applesauce (¼ cup per egg)", "aquafaba (3 tbsp per egg)"]},
+      {"reason": "egg-free", "options": ["flax egg", "chia egg", "unsweetened applesauce"]}
+    ]
+  },
+  {
+    "ingredient": "honey",
+    "substitutions": [
+      {"reason": "vegan", "options": ["maple syrup", "agave nectar", "date syrup"]},
+      {"reason": "keto", "options": ["monk fruit sweetener", "allulose"]}
+    ]
+  },
+  {
+    "ingredient": "flour",
+    "substitutions": [
+      {"reason": "gluten-free", "options": ["almond flour", "rice flour", "oat flour (certified GF)", "cassava flour", "gluten-free all-purpose blend"]},
+      {"reason": "paleo", "options": ["almond flour", "cassava flour", "tapioca flour"]},
+      {"reason": "keto", "options": ["almond flour", "coconut flour"]}
+    ]
+  },
+  {
+    "ingredient": "bread",
+    "substitutions": [
+      {"reason": "gluten-free", "options": ["gluten-free bread", "lettuce wraps", "rice cakes"]},
+      {"reason": "keto", "options": ["lettuce wraps", "cloud bread", "portobello mushroom bun"]},
+      {"reason": "paleo", "options": ["lettuce wraps", "collard green wraps"]}
+    ]
+  },
+  {
+    "ingredient": "pasta",
+    "substitutions": [
+      {"reason": "gluten-free", "options": ["rice pasta", "corn pasta", "chickpea pasta", "lentil pasta"]},
+      {"reason": "keto", "options": ["zucchini noodles (zoodles)", "shirataki noodles", "hearts of palm pasta"]},
+      {"reason": "paleo", "options": ["zucchini noodles", "spaghetti squash", "sweet potato noodles"]}
+    ]
+  },
+  {
+    "ingredient": "rice",
+    "substitutions": [
+      {"reason": "keto", "options": ["cauliflower rice", "shirataki rice"]},
+      {"reason": "paleo", "options": ["cauliflower rice", "sweet potato"]},
+      {"reason": "diabetic-friendly", "options": ["cauliflower rice", "quinoa", "barley"]}
+    ]
+  },
+  {
+    "ingredient": "sugar",
+    "substitutions": [
+      {"reason": "keto", "options": ["erythritol", "monk fruit sweetener", "allulose", "stevia"]},
+      {"reason": "diabetic-friendly", "options": ["monk fruit sweetener", "stevia", "erythritol"]},
+      {"reason": "paleo", "options": ["dates", "maple syrup", "raw honey"]},
+      {"reason": "whole30", "options": null}
+    ]
+  },
+  {
+    "ingredient": "brown sugar",
+    "substitutions": [
+      {"reason": "keto", "options": ["brown sugar substitute (erythritol blend)", "monk fruit sweetener"]},
+      {"reason": "diabetic-friendly", "options": ["monk fruit sweetener", "erythritol"]}
+    ]
+  },
+  {
+    "ingredient": "soy sauce",
+    "substitutions": [
+      {"reason": "gluten-free", "options": ["tamari (certified GF)", "coconut aminos"]},
+      {"reason": "low-sodium", "options": ["low-sodium tamari", "coconut aminos"]},
+      {"reason": "whole30", "options": ["coconut aminos"]}
+    ]
+  },
+  {
+    "ingredient": "peanut butter",
+    "substitutions": [
+      {"reason": "nut-free", "options": ["sunflower seed butter (SunButter)", "tahini", "pumpkin seed butter"]},
+      {"reason": "paleo", "options": ["almond butter", "cashew butter", "sunflower seed butter"]}
+    ]
+  },
+  {
+    "ingredient": "peanut",
+    "substitutions": [
+      {"reason": "nut-free", "options": ["sunflower seeds", "pumpkin seeds", "hemp seeds"]}
+    ]
+  },
+  {
+    "ingredient": "almond",
+    "substitutions": [
+      {"reason": "nut-free", "options": ["sunflower seeds", "pumpkin seeds", "hemp seeds"]}
+    ]
+  },
+  {
+    "ingredient": "almond milk",
+    "substitutions": [
+      {"reason": "nut-free", "options": ["oat milk", "soy milk", "coconut milk", "rice milk"]}
+    ]
+  },
+  {
+    "ingredient": "chicken stock",
+    "substitutions": [
+      {"reason": "vegan", "options": ["vegetable stock", "mushroom broth"]},
+      {"reason": "vegetarian", "options": ["vegetable stock", "mushroom broth"]}
+    ]
+  },
+  {
+    "ingredient": "beef stock",
+    "substitutions": [
+      {"reason": "vegan", "options": ["mushroom broth", "vegetable stock"]},
+      {"reason": "vegetarian", "options": ["mushroom broth", "vegetable stock"]}
+    ]
+  },
+  {
+    "ingredient": "lard",
+    "substitutions": [
+      {"reason": "vegan", "options": ["coconut oil", "vegetable shortening"]},
+      {"reason": "vegetarian", "options": ["coconut oil", "butter", "vegetable shortening"]},
+      {"reason": "halal", "options": ["coconut oil", "vegetable shortening", "beef tallow (halal-certified)"]}
+    ]
+  },
+  {
+    "ingredient": "worcestershire sauce",
+    "substitutions": [
+      {"reason": "vegan", "options": ["vegan Worcestershire sauce", "soy sauce + dash of vinegar"]},
+      {"reason": "gluten-free", "options": ["gluten-free Worcestershire sauce", "coconut aminos + vinegar"]}
+    ]
+  },
+  {
+    "ingredient": "fish sauce",
+    "substitutions": [
+      {"reason": "vegan", "options": ["soy sauce + nori + lime juice", "coconut aminos"]},
+      {"reason": "vegetarian", "options": ["soy sauce + seaweed", "vegan fish sauce"]}
+    ]
+  },
+  {
+    "ingredient": "gelatin",
+    "substitutions": [
+      {"reason": "vegan", "options": ["agar-agar", "carrageenan", "pectin"]},
+      {"reason": "vegetarian", "options": ["agar-agar", "pectin"]}
+    ]
+  },
+  {
+    "ingredient": "yogurt",
+    "substitutions": [
+      {"reason": "dairy-free", "options": ["coconut yogurt", "almond milk yogurt", "oat milk yogurt"]},
+      {"reason": "vegan", "options": ["coconut yogurt", "soy yogurt"]}
+    ]
+  },
+  {
+    "ingredient": "cream cheese",
+    "substitutions": [
+      {"reason": "dairy-free", "options": ["cashew cream cheese", "vegan cream cheese", "tofu cream cheese"]},
+      {"reason": "vegan", "options": ["cashew cream cheese", "vegan cream cheese"]}
+    ]
+  },
+  {
+    "ingredient": "sour cream",
+    "substitutions": [
+      {"reason": "dairy-free", "options": ["coconut cream", "cashew sour cream", "vegan sour cream"]},
+      {"reason": "vegan", "options": ["cashew sour cream", "vegan sour cream"]}
+    ]
+  },
+  {
+    "ingredient": "miso",
+    "substitutions": [
+      {"reason": "gluten-free", "options": ["gluten-free miso (chickpea miso or brown rice miso)", "soy-free miso"]},
+      {"reason": "low-sodium", "options": ["white miso (lower sodium)", "miso powder (use less)"]}
+    ]
+  },
+  {
+    "ingredient": "oats",
+    "substitutions": [
+      {"reason": "gluten-free", "options": ["certified gluten-free oats", "quinoa flakes", "buckwheat flakes"]},
+      {"reason": "keto", "options": ["hemp hearts", "chia seeds", "flaxseed meal"]}
+    ]
+  },
+  {
+    "ingredient": "potato",
+    "substitutions": [
+      {"reason": "keto", "options": ["cauliflower", "turnip", "celeriac/celery root"]},
+      {"reason": "paleo", "options": null}
+    ]
+  },
+  {
+    "ingredient": "corn",
+    "substitutions": [
+      {"reason": "keto", "options": ["diced bell pepper", "diced zucchini"]},
+      {"reason": "whole30", "options": ["diced bell pepper", "diced zucchini"]}
+    ]
+  },
+  {
+    "ingredient": "chickpeas",
+    "substitutions": [
+      {"reason": "keto", "options": ["edamame (in small amounts)", "lupini beans (low carb)"]},
+      {"reason": "paleo", "options": null},
+      {"reason": "whole30", "options": null}
+    ]
+  },
+  {
+    "ingredient": "lentils",
+    "substitutions": [
+      {"reason": "paleo", "options": null},
+      {"reason": "keto", "options": null}
+    ]
+  },
+  {
+    "ingredient": "tofu",
+    "substitutions": [
+      {"reason": "paleo", "options": ["chicken", "fish", "eggs"]},
+      {"reason": "whole30", "options": ["chicken", "fish", "eggs"]}
+    ]
+  },
+  {
+    "ingredient": "vanilla extract",
+    "substitutions": [
+      {"reason": "halal", "options": ["vanilla bean paste", "vanilla powder", "scraped vanilla bean"]}
+    ]
+  },
+  {
+    "ingredient": "beer",
+    "substitutions": [
+      {"reason": "gluten-free", "options": ["gluten-free beer", "cider", "chicken stock + splash of apple cider vinegar"]},
+      {"reason": "halal", "options": ["chicken stock", "grape juice + vinegar", "sparkling water"]}
+    ]
+  },
+  {
+    "ingredient": "wine",
+    "substitutions": [
+      {"reason": "halal", "options": ["grape juice + splash of vinegar", "chicken or beef stock", "pomegranate juice"]},
+      {"reason": "whole30", "options": ["apple juice", "chicken stock", "sparkling water"]}
+    ]
+  },
+  {
+    "ingredient": "pork",
+    "substitutions": [
+      {"reason": "halal", "options": ["halal-certified beef", "lamb", "chicken"]},
+      {"reason": "kosher", "options": ["beef", "chicken", "turkey"]},
+      {"reason": "vegetarian", "options": ["mushrooms", "jackfruit", "tempeh"]}
+    ]
+  },
+  {
+    "ingredient": "bacon",
+    "substitutions": [
+      {"reason": "halal", "options": ["beef bacon", "turkey bacon (halal-certified)"]},
+      {"reason": "kosher", "options": ["beef bacon", "turkey bacon (kosher-certified)"]},
+      {"reason": "vegetarian", "options": ["coconut bacon", "tempeh bacon", "mushroom bacon"]},
+      {"reason": "vegan", "options": ["coconut bacon", "tempeh bacon"]}
+    ]
+  }
+]

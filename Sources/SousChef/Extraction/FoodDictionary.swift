@@ -1,12 +1,55 @@
 import Foundation
 
-/// SC-041: Food entity dictionary — 100+ curated items with aliases, categories, allergens.
+/// SC-041 / SC-051: Food entity dictionary — 100+ curated items with aliases, categories, allergens,
+/// and computed dietary flags (FODMAP, glycemic, sodium, processed).
 /// Loaded from bundled food-dictionary.json at app start.
 struct FoodEntry: Decodable {
     let name: String
     let aliases: [String]
     let categories: [String]
     let commonAllergens: [String]
+
+    // MARK: - SC-051 Dietary flags (computed from name/categories)
+
+    /// High-FODMAP items that trigger IBS symptoms.
+    var isHighFODMAP: Bool {
+        let highFODMAP: Set<String> = [
+            "garlic", "onion", "shallot", "wheat", "apple", "pear", "honey",
+            "milk", "heavy cream", "yogurt", "soft cheese", "chickpeas", "lentils",
+            "kidney beans", "black beans", "white beans", "cauliflower", "mushroom",
+            "avocado", "mango", "watermelon", "peach", "plum", "cherry"
+        ]
+        return highFODMAP.contains(name) ||
+               categories.contains("dairy") && (name.contains("cream") || name == "milk" || name == "yogurt")
+    }
+
+    /// High-glycemic-index items that spike blood sugar.
+    var isHighGlycemic: Bool {
+        let highGI: Set<String> = [
+            "sugar", "brown sugar", "powdered sugar", "honey", "maple syrup",
+            "corn syrup", "agave", "rice", "bread", "potato", "corn", "banana",
+            "pasta", "oats", "chocolate", "beer"
+        ]
+        return highGI.contains(name) || categories.contains("sweetener")
+    }
+
+    /// High-sodium items (>300mg per typical serving).
+    var isHighSodium: Bool {
+        let highSodium: Set<String> = [
+            "soy sauce", "fish sauce", "oyster sauce", "hoisin sauce", "miso",
+            "salt", "anchovies", "capers", "olives", "pickles", "stock"
+        ]
+        return highSodium.contains(name)
+    }
+
+    /// Processed / ultra-processed items.
+    var isProcessed: Bool {
+        let processed: Set<String> = [
+            "soy sauce", "fish sauce", "oyster sauce", "hoisin sauce", "ketchup",
+            "mayonnaise", "sriracha", "bread", "pasta", "pork", "stock"
+        ]
+        return processed.contains(name) || categories.contains("condiment") || categories.contains("processed")
+    }
 }
 
 final class FoodDictionary: @unchecked Sendable {

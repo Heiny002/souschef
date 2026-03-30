@@ -209,7 +209,9 @@ struct RecipeDetailView: View {
     let recipe: Recipe
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Query private var allDiners: [DinerProfile]
     @State private var showCookMode = false
+    @State private var showCompatibility = false
 
     var body: some View {
         ZStack {
@@ -291,8 +293,16 @@ struct RecipeDetailView: View {
         .toolbarBackground(Color.scBackground, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            if !recipe.steps.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if !allDiners.isEmpty {
+                    Button {
+                        showCompatibility = true
+                    } label: {
+                        Image(systemName: "person.2.badge.checkmark")
+                            .foregroundStyle(Color.scAccent)
+                    }
+                }
+                if !recipe.steps.isEmpty {
                     Button {
                         showCookMode = true
                     } label: {
@@ -304,6 +314,9 @@ struct RecipeDetailView: View {
         }
         .fullScreenCover(isPresented: $showCookMode) {
             CookModeView(recipe: recipe)
+        }
+        .sheet(isPresented: $showCompatibility) {
+            CompatibilityView(recipe: recipe, diners: allDiners)
         }
     }
 
