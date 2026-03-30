@@ -3,24 +3,25 @@ import SwiftData
 
 @Model
 final class Recipe {
-    var id: UUID
+    @Attribute(.unique) var id: UUID
     var title: String
     var sourceURL: String?
-    var sourceType: String
+    var sourceType: String       // "web", "tiktok", "instagram", "youtube", "manual"
     var recipeYield: String?
-    var prepTime: Int? // seconds
-    var cookTime: Int? // seconds
-    var totalTime: Int? // seconds
+    var prepTime: Int?           // seconds
+    var cookTime: Int?           // seconds
+    var totalTime: Int?          // seconds
     var appliances: [String]
+    var recipeDescription: String?
     var extractionConfidence: Double
-    var extractionMethod: String
+    var extractionMethod: String // e.g. "schema-org-jsonld", "heuristic", "llm"
     var userVerified: Bool
     var dateAdded: Date
 
-    @Relationship(deleteRule: .cascade)
+    @Relationship(deleteRule: .cascade, inverse: \Ingredient.recipe)
     var ingredients: [Ingredient]
 
-    @Relationship(deleteRule: .cascade)
+    @Relationship(deleteRule: .cascade, inverse: \CookingStep.recipe)
     var steps: [CookingStep]
 
     init(
@@ -46,7 +47,7 @@ final class Recipe {
 
 @Model
 final class Ingredient {
-    var id: UUID
+    @Attribute(.unique) var id: UUID
     var quantity: String?
     var unit: String?
     var item: String
@@ -54,6 +55,8 @@ final class Ingredient {
     var section: String?
     var rawText: String
     var order: Int
+
+    var recipe: Recipe?
 
     init(item: String, rawText: String, order: Int = 0) {
         self.id = UUID()
@@ -65,13 +68,15 @@ final class Ingredient {
 
 @Model
 final class CookingStep {
-    var id: UUID
+    @Attribute(.unique) var id: UUID
     var order: Int
     var instruction: String
-    var duration: Int? // seconds
+    var duration: Int?           // seconds
     var temperature: String?
     var timerLabel: String?
     var rawText: String
+
+    var recipe: Recipe?
 
     init(order: Int, instruction: String, rawText: String) {
         self.id = UUID()
