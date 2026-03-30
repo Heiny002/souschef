@@ -35,5 +35,11 @@
 	<string>SousChef uses your microphone for voice-guided cooking commands.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>SousChef uses speech recognition to let you control cooking steps hands-free.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fonts/Lora-Regular.ttf</string>
+		<string>Fonts/Lora-SemiBold.ttf</string>
+		<string>Fonts/Lora-Bold.ttf</string>
+	</array>
 </dict>
 </plist>
