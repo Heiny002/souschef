@@ -8,7 +8,7 @@ final class DinerProfile {
     var diets: [String]
     var customRestrictions: [String]   // UI label: "Ingredients to Avoid"
     var allergies: [String]            // UI label: "Restricted Ingredients/Allergies"
-    var favoriteFoods: [String]
+    var favoriteFoods: [String] = []   // Inline default required for SwiftData lightweight migration
     var dateCreated: Date
 
     init(name: String) {
