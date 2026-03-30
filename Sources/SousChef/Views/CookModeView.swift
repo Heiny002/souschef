@@ -1,36 +1,43 @@
 import SwiftUI
 import SwiftData
 
-/// SC-043: Cook Mode — voice-first, full-screen step-by-step cooking interface.
-/// Large serif text (24–28pt min), minimal chrome, swipe to advance, keep-awake.
+/// Cook Mode — voice-first, full-screen step-by-step cooking interface.
+/// Features: TTS reads steps aloud, voice commands, micro-step splitting,
+/// smart timers with per-side support, pinned timer overlay.
 struct CookModeView: View {
     let recipe: Recipe
     @Environment(\.dismiss) private var dismiss
 
-    @State private var currentStepIndex = 0
-    @State private var timerSeconds: Int = 0
-    @State private var timerRunning = false
+    // Voice + timer
+    @StateObject private var voice = CookVoiceController()
+    @StateObject private var timerState = CookTimerState()
+    @State private var voiceEnabled = false
+
+    // Navigation
+    @State private var currentIndex = 0
     @State private var showIngredients = false
 
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    private var sortedSteps: [CookingStep] {
-        recipe.steps.sorted { $0.order < $1.order }
+    // Micro-steps built from recipe on appear
+    private struct MicroStep {
+        let instruction: String
+        let detectedTimer: DetectedTimer?
     }
+    @State private var microSteps: [MicroStep] = []
 
-    private var currentStep: CookingStep? {
-        guard !sortedSteps.isEmpty, currentStepIndex < sortedSteps.count else { return nil }
-        return sortedSteps[currentStepIndex]
+    private var current: MicroStep? {
+        guard !microSteps.isEmpty, microSteps.indices.contains(currentIndex) else { return nil }
+        return microSteps[currentIndex]
     }
+    private var isFirst: Bool { currentIndex == 0 }
+    private var isLast: Bool  { currentIndex == microSteps.count - 1 }
 
-    private var isFirstStep: Bool { currentStepIndex == 0 }
-    private var isLastStep: Bool { currentStepIndex == sortedSteps.count - 1 }
+    // MARK: - Body
 
     var body: some View {
         ZStack {
             Color.scBackground.ignoresSafeArea()
 
-            if sortedSteps.isEmpty {
+            if microSteps.isEmpty {
                 emptyState
             } else {
                 cookInterface
@@ -38,54 +45,150 @@ struct CookModeView: View {
         }
         .navigationBarHidden(true)
         .statusBarHidden(true)
-        .onReceive(timer) { _ in tickTimer() }
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+            buildMicroSteps()
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            voice.deactivate()
+            timerState.stop()
+        }
         .sheet(isPresented: $showIngredients) {
             ingredientsSheet
         }
+        .task {
+            voiceEnabled = await voice.requestPermissions()
+            if voiceEnabled {
+                voice.onCommand = { [self] cmd in handleVoiceCommand(cmd) }
+                // Brief delay so the view is settled before TTS starts
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                speakCurrent()
+            }
+        }
     }
 
-    // MARK: - Main Interface
+    // MARK: - Build micro-steps
+
+    private func buildMicroSteps() {
+        let sorted = recipe.steps.sorted { $0.order < $1.order }
+        microSteps = sorted.flatMap { step -> [MicroStep] in
+            let parts = MicroStepSplitter.split(step.instruction)
+            return parts.map { instruction in
+                MicroStep(
+                    instruction: instruction,
+                    detectedTimer: TimerDetector.detect(in: instruction)
+                )
+            }
+        }
+    }
+
+    // MARK: - Navigation
+
+    private func goNext() {
+        guard !isLast else { dismiss(); return }
+        advance(by: +1)
+    }
+
+    private func goBack() {
+        guard !isFirst else { return }
+        advance(by: -1)
+    }
+
+    private func advance(by delta: Int) {
+        timerState.stop()
+        voice.stopSpeaking()
+        withAnimation(.easeInOut(duration: 0.25)) { currentIndex += delta }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            speakCurrent()
+            if let t = current?.detectedTimer {
+                timerState.configure(from: t)
+            }
+        }
+    }
+
+    // MARK: - TTS
+
+    private func speakCurrent() {
+        guard voiceEnabled, let step = current else { return }
+        let prefix = microSteps.count > 1
+            ? "Step \(currentIndex + 1). "
+            : ""
+        voice.speak(prefix + step.instruction)
+    }
+
+    // MARK: - Voice commands
+
+    private func handleVoiceCommand(_ cmd: CookVoiceController.VoiceCommand) {
+        switch cmd {
+        case .next:          goNext()
+        case .back:          goBack()
+        case .startTimer:    timerState.start()
+        case .stopTimer:     timerState.pause()
+        case .repeatStep:    speakCurrent()
+        case .showIngredients: showIngredients = true
+        }
+    }
+
+    // MARK: - Swipe gesture
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 40)
+            .onEnded { v in
+                let h = v.translation.width
+                guard abs(h) > abs(v.translation.height) else { return }
+                if h < 0 { goNext() } else { goBack() }
+            }
+    }
+
+    // MARK: - Main interface
 
     private var cookInterface: some View {
         GeometryReader { geo in
             VStack(spacing: 0) {
-                // Top bar — minimal chrome
                 topBar
                     .padding(.horizontal, Spacing.md)
                     .padding(.top, geo.safeAreaInsets.top + Spacing.sm)
 
+                // Pinned timer strip
+                if timerState.isConfigured {
+                    pinnedTimer
+                        .padding(.horizontal, Spacing.md)
+                        .padding(.top, Spacing.sm)
+                }
+
                 Spacer()
 
-                // Step counter
-                stepCounter
+                // Step counter dots
+                stepDots
                     .padding(.horizontal, Spacing.md)
 
                 Spacer(minLength: Spacing.lg)
 
-                // Main step text — the star
-                if let step = currentStep {
-                    stepText(step: step)
+                // Main step text
+                if let step = current {
+                    stepText(step.instruction)
                         .padding(.horizontal, Spacing.lg)
                         .gesture(swipeGesture)
                 }
 
                 Spacer(minLength: Spacing.xl)
 
-                // Timer section (if step has duration)
-                if let step = currentStep, let duration = step.duration, duration > 0 {
-                    timerSection(duration: duration)
+                // "Start Timer" prompt if step has a timer but it's not running
+                if let t = current?.detectedTimer, !timerState.isConfigured {
+                    timerPrompt(t)
                         .padding(.horizontal, Spacing.md)
                 }
 
                 // Navigation buttons
-                navigationButtons
+                navButtons
                     .padding(.horizontal, Spacing.md)
                     .padding(.bottom, geo.safeAreaInsets.bottom + Spacing.md)
             }
         }
     }
+
+    // MARK: - Top bar
 
     private var topBar: some View {
         HStack {
@@ -97,135 +200,147 @@ struct CookModeView: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("Close Cook Mode")
+
             Spacer()
+
             Text(recipe.title)
                 .font(.scLabel)
                 .foregroundStyle(Color.scTextSecondary)
                 .lineLimit(1)
+
             Spacer()
-            Button { showIngredients = true } label: {
-                Image(systemName: "list.bullet")
-                    .foregroundStyle(Color.scTextSecondary)
-                    .font(.system(size: 18, weight: .medium))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+
+            HStack(spacing: Spacing.xs) {
+                // Voice indicator
+                if voiceEnabled {
+                    Image(systemName: voice.isListening ? "mic.fill" : "mic")
+                        .foregroundStyle(voice.isListening ? Color.scAccent : Color.scTextSecondary.opacity(0.5))
+                        .font(.system(size: 14))
+                        .animation(.easeInOut(duration: 0.3), value: voice.isListening)
+                }
+                Button { showIngredients = true } label: {
+                    Image(systemName: "list.bullet")
+                        .foregroundStyle(Color.scTextSecondary)
+                        .font(.system(size: 18, weight: .medium))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("View Ingredients")
             }
-            .accessibilityLabel("View Ingredients")
         }
     }
 
-    private var stepCounter: some View {
+    // MARK: - Step dots
+
+    private var stepDots: some View {
         HStack(spacing: Spacing.xs) {
-            ForEach(0..<sortedSteps.count, id: \.self) { idx in
+            ForEach(0..<microSteps.count, id: \.self) { idx in
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(idx == currentStepIndex ? Color.scAccent : Color.scBorder)
+                    .fill(idx == currentIndex ? Color.scAccent : Color.scBorder)
                     .frame(height: 3)
-                    .animation(.easeInOut(duration: 0.2), value: currentStepIndex)
+                    .animation(.easeInOut(duration: 0.2), value: currentIndex)
             }
         }
-        .accessibilityLabel("Step \(currentStepIndex + 1) of \(sortedSteps.count)")
+        .accessibilityLabel("Step \(currentIndex + 1) of \(microSteps.count)")
     }
 
-    private func stepText(step: CookingStep) -> some View {
-        Text(step.instruction)
+    // MARK: - Step text
+
+    private func stepText(_ instruction: String) -> some View {
+        Text(instruction)
             .font(.custom("Lora-Regular", size: 26, relativeTo: .title))
             .foregroundStyle(Color.scTextPrimary)
             .lineSpacing(6)
             .multilineTextAlignment(.center)
-            .minimumScaleFactor(0.8)
-            .id(step.order)  // Forces re-render on step change
+            .minimumScaleFactor(0.75)
+            .id(currentIndex)
             .transition(.asymmetric(
                 insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal: .move(edge: .leading).combined(with: .opacity)
             ))
-            .animation(.easeInOut(duration: 0.25), value: currentStepIndex)
+            .animation(.easeInOut(duration: 0.25), value: currentIndex)
     }
 
-    private var navigationButtons: some View {
-        HStack(spacing: Spacing.md) {
-            // Previous
-            Button {
-                guard !isFirstStep else { return }
-                withAnimation { currentStepIndex -= 1 }
-                resetTimer()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 20, weight: .medium))
-                    .frame(width: 56, height: 56)
-                    .background(Color.scSurface)
-                    .clipShape(Circle())
-                    .foregroundStyle(isFirstStep ? Color.scTextSecondary.opacity(0.3) : Color.scTextPrimary)
-            }
-            .disabled(isFirstStep)
-            .accessibilityLabel("Previous step")
+    // MARK: - Timer prompt (before timer is started)
 
-            Spacer()
-
-            // Next / Done
-            Button {
-                if isLastStep {
-                    dismiss()
-                } else {
-                    withAnimation { currentStepIndex += 1 }
-                    resetTimer()
-                }
-            } label: {
-                HStack(spacing: Spacing.sm) {
-                    Text(isLastStep ? "Done!" : "Next")
-                        .font(.scLabel)
-                    if !isLastStep {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .medium))
-                    } else {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                }
-                .padding(.horizontal, Spacing.xl)
-                .frame(height: 56)
-                .background(isLastStep ? Color.green : Color.scAccent)
-                .foregroundStyle(Color.scBackground)
-                .clipShape(Capsule())
+    private func timerPrompt(_ t: DetectedTimer) -> some View {
+        Button {
+            timerState.configure(from: t)
+            timerState.start()
+        } label: {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "timer")
+                    .font(.system(size: 16))
+                Text("Start \(t.label) timer\(t.isPerSide ? " · per side" : "")")
+                    .font(.scLabel)
             }
+            .padding(.horizontal, Spacing.lg)
+            .padding(.vertical, Spacing.sm)
+            .background(Color.scSurface)
+            .foregroundStyle(Color.scAccent)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.scAccent.opacity(0.4), lineWidth: 1))
         }
-        .padding(.top, Spacing.md)
+        .padding(.bottom, Spacing.md)
     }
 
-    // MARK: - Timer
+    // MARK: - Pinned timer overlay
 
-    private func timerSection(duration: Int) -> some View {
-        VStack(spacing: Spacing.sm) {
-            let displayTime = timerRunning || timerSeconds > 0 ? timerSeconds : duration
-            Text(formatTime(displayTime))
-                .font(.custom("Lora-Bold", size: 48, relativeTo: .largeTitle))
-                .foregroundStyle(timerRunning ? Color.scAccent : Color.scTextSecondary)
-                .monospacedDigit()
-
-            HStack(spacing: Spacing.md) {
-                Button {
-                    if timerRunning {
-                        timerRunning = false
-                    } else {
-                        if timerSeconds == 0 { timerSeconds = duration }
-                        timerRunning = true
-                    }
-                } label: {
-                    Label(timerRunning ? "Pause" : (timerSeconds > 0 ? "Resume" : "Start Timer"),
-                          systemImage: timerRunning ? "pause.fill" : "play.fill")
-                        .font(.scCaption)
-                        .padding(.horizontal, Spacing.md)
-                        .padding(.vertical, Spacing.xs)
-                        .background(Color.scSurface)
-                        .foregroundStyle(Color.scTextPrimary)
-                        .clipShape(Capsule())
+    private var pinnedTimer: some View {
+        VStack(spacing: Spacing.xs) {
+            // Progress bar
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.scBorder)
+                    Capsule()
+                        .fill(timerState.didComplete ? Color.green : Color.scAccent)
+                        .frame(width: g.size.width * timerState.progressFraction)
+                        .animation(.linear(duration: 1), value: timerState.secondsRemaining)
                 }
-                if timerSeconds > 0 {
-                    Button {
-                        resetTimer()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
+            }
+            .frame(height: 4)
+
+            HStack {
+                // Label + side indicator
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(timerState.didComplete ? "Done! 🎉" : timerState.label)
+                        .font(.scLabel)
+                        .foregroundStyle(timerState.didComplete ? Color.green : Color.scTextPrimary)
+                    if timerState.totalSides > 1 {
+                        Text("Side \(timerState.sideNumber) of \(timerState.totalSides)")
                             .font(.scCaption)
-                            .padding(Spacing.sm)
+                            .foregroundStyle(Color.scTextSecondary)
+                    }
+                }
+
+                Spacer()
+
+                // Time remaining
+                Text(timerState.didComplete ? "00:00" : timerState.formattedTime)
+                    .font(.custom("Lora-Bold", size: 32, relativeTo: .title))
+                    .foregroundStyle(timerState.didComplete ? Color.green : Color.scAccent)
+                    .monospacedDigit()
+
+                Spacer()
+
+                // Controls
+                HStack(spacing: Spacing.sm) {
+                    Button {
+                        if timerState.isRunning { timerState.pause() }
+                        else if timerState.didComplete { timerState.reset() }
+                        else { timerState.start() }
+                    } label: {
+                        Image(systemName: buttonIcon)
+                            .font(.system(size: 20, weight: .medium))
+                            .frame(width: 40, height: 40)
+                            .background(Color.scSurface)
+                            .foregroundStyle(Color.scTextPrimary)
+                            .clipShape(Circle())
+                    }
+                    Button { timerState.stop() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 32, height: 32)
                             .background(Color.scSurface)
                             .foregroundStyle(Color.scTextSecondary)
                             .clipShape(Circle())
@@ -236,49 +351,58 @@ struct CookModeView: View {
         .padding(Spacing.md)
         .background(Color.scSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(timerState.didComplete ? Color.green.opacity(0.5) : Color.scBorder, lineWidth: 1)
+        )
+        .animation(.easeInOut(duration: 0.3), value: timerState.didComplete)
     }
 
-    private func tickTimer() {
-        guard timerRunning, timerSeconds > 0 else {
-            if timerRunning && timerSeconds == 0 {
-                timerRunning = false
-                // Timer done — could trigger haptic/sound here
+    private var buttonIcon: String {
+        if timerState.didComplete { return "arrow.clockwise" }
+        return timerState.isRunning ? "pause.fill" : "play.fill"
+    }
+
+    // MARK: - Navigation buttons
+
+    private var navButtons: some View {
+        HStack(spacing: Spacing.md) {
+            Button {
+                goBack()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .medium))
+                    .frame(width: 56, height: 56)
+                    .background(Color.scSurface)
+                    .clipShape(Circle())
+                    .foregroundStyle(isFirst ? Color.scTextSecondary.opacity(0.3) : Color.scTextPrimary)
             }
-            return
-        }
-        timerSeconds -= 1
-    }
+            .disabled(isFirst)
+            .accessibilityLabel("Previous step")
 
-    private func resetTimer() {
-        timerRunning = false
-        timerSeconds = 0
-    }
+            Spacer()
 
-    private func formatTime(_ seconds: Int) -> String {
-        let m = seconds / 60
-        let s = seconds % 60
-        return String(format: "%d:%02d", m, s)
-    }
-
-    // MARK: - Swipe Gesture
-
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 40)
-            .onEnded { value in
-                let horizontal = value.translation.width
-                let vertical = abs(value.translation.height)
-                guard abs(horizontal) > vertical else { return }
-                if horizontal < 0, !isLastStep {
-                    withAnimation { currentStepIndex += 1 }
-                    resetTimer()
-                } else if horizontal > 0, !isFirstStep {
-                    withAnimation { currentStepIndex -= 1 }
-                    resetTimer()
+            Button {
+                goNext()
+            } label: {
+                HStack(spacing: Spacing.sm) {
+                    Text(isLast ? "Done!" : "Next")
+                        .font(.scLabel)
+                    Image(systemName: isLast ? "checkmark" : "chevron.right")
+                        .font(.system(size: 14, weight: .medium))
                 }
+                .padding(.horizontal, Spacing.xl)
+                .frame(height: 56)
+                .background(isLast ? Color.green : Color.scAccent)
+                .foregroundStyle(Color.scBackground)
+                .clipShape(Capsule())
             }
+            .accessibilityLabel(isLast ? "Finish cooking" : "Next step")
+        }
+        .padding(.top, Spacing.md)
     }
 
-    // MARK: - Ingredients Sheet
+    // MARK: - Ingredients sheet
 
     private var ingredientsSheet: some View {
         NavigationStack {
@@ -286,13 +410,10 @@ struct CookModeView: View {
                 Color.scBackground.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: Spacing.sm) {
-                        ForEach(recipe.ingredients.sorted(by: { $0.order < $1.order })) { ingredient in
+                        ForEach(recipe.ingredients.sorted { $0.order < $1.order }) { ing in
                             HStack(alignment: .top, spacing: Spacing.sm) {
-                                Circle()
-                                    .fill(Color.scAccent)
-                                    .frame(width: 6, height: 6)
-                                    .padding(.top, 7)
-                                Text(ingredient.rawText)
+                                Circle().fill(Color.scAccent).frame(width: 6, height: 6).padding(.top, 7)
+                                Text(ing.rawText)
                                     .font(.scBody)
                                     .foregroundStyle(Color.scTextPrimary)
                             }
@@ -315,7 +436,7 @@ struct CookModeView: View {
         .presentationDetents([.medium, .large])
     }
 
-    // MARK: - Empty State
+    // MARK: - Empty state
 
     private var emptyState: some View {
         VStack(spacing: Spacing.lg) {
@@ -338,34 +459,23 @@ struct CookModeView: View {
     let container = try! ModelContainer(for: Recipe.self, DinerProfile.self, configurations: config)
     let ctx = container.mainContext
 
-    let recipe = Recipe(title: "Chocolate Chip Cookies", extractionConfidence: 0.9, extractionMethod: "schema-org")
-    let step1 = CookingStep(order: 1, instruction: "Preheat your oven to 375°F and line two baking sheets with parchment paper.", rawText: "")
-    step1.duration = 10 * 60
-    let step6 = CookingStep(order: 6, instruction: "Bake for 9–11 minutes until the edges are set and golden but the centers still look slightly underdone.", rawText: "")
-    step6.duration = 11 * 60
+    let recipe = Recipe(title: "Pasta Primavera", extractionConfidence: 0.9, extractionMethod: "schema-org")
     recipe.steps = [
-        step1,
-        CookingStep(order: 2, instruction: "In a large bowl, cream together the softened butter with both sugars until light and fluffy, about 3–4 minutes.", rawText: ""),
-        CookingStep(order: 3, instruction: "Beat in the eggs one at a time, then add the vanilla extract. Mix until just combined.", rawText: ""),
-        CookingStep(order: 4, instruction: "Slowly mix in the flour mixture until just incorporated. Do not over-mix or the cookies will be tough.", rawText: ""),
-        CookingStep(order: 5, instruction: "Fold in the chocolate chips. Drop rounded tablespoons of dough onto the prepared baking sheets, spacing 2 inches apart.", rawText: ""),
-        step6,
-        CookingStep(order: 7, instruction: "Cool on the baking sheet for 5 minutes before transferring to a wire rack. Enjoy warm!", rawText: ""),
+        CookingStep(order: 1, instruction: "Bring a large pot of salted water to a boil.", rawText: ""),
+        CookingStep(order: 2, instruction: "Dice the carrots, celery, and onion.", rawText: ""),
+        CookingStep(order: 3, instruction: "Sauté the vegetables in olive oil over medium heat for 4-6 minutes until softened.", rawText: ""),
+        CookingStep(order: 4, instruction: "Cook pasta according to package directions, about 8-10 minutes.", rawText: ""),
+        CookingStep(order: 5, instruction: "Toss pasta with vegetables and serve immediately.", rawText: ""),
     ]
     recipe.ingredients = [
-        Ingredient(item: "butter", rawText: "1 cup (2 sticks) unsalted butter, softened"),
-        Ingredient(item: "sugar", rawText: "3/4 cup granulated sugar"),
-        Ingredient(item: "brown sugar", rawText: "3/4 cup packed brown sugar"),
-        Ingredient(item: "eggs", rawText: "2 large eggs"),
-        Ingredient(item: "vanilla", rawText: "2 tsp vanilla extract"),
-        Ingredient(item: "flour", rawText: "2 1/4 cups all-purpose flour"),
-        Ingredient(item: "chocolate chips", rawText: "2 cups chocolate chips"),
+        Ingredient(item: "pasta", rawText: "300g pasta"),
+        Ingredient(item: "carrots", rawText: "2 carrots, diced"),
+        Ingredient(item: "celery", rawText: "3 stalks celery"),
+        Ingredient(item: "onion", rawText: "1 onion"),
     ]
     ctx.insert(recipe)
 
-    return NavigationStack {
-        CookModeView(recipe: recipe)
-    }
-    .modelContainer(container)
-    .preferredColorScheme(.dark)
+    return NavigationStack { CookModeView(recipe: recipe) }
+        .modelContainer(container)
+        .preferredColorScheme(.dark)
 }

@@ -7,11 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		142E6680617222E6C17C3D2C /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42661EB886B8318D8DEFABFA /* OnboardingView.swift */; };
 		196D769DA35F5DB734E35CAB /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1361638A120B61026F00DCC7 /* AVFoundation.framework */; };
 		1D7F5DD1A0FF9FA993931E04 /* ProfileMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E935BFAA8A8292B478DA81B0 /* ProfileMatcher.swift */; };
 		1D948C56C4D49042509192E0 /* URLRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A715F4B83B9FDBDD19E10BE6 /* URLRouterTests.swift */; };
 		21A36AEB84A1CF6CF499FD33 /* VideoMetadataFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6927B3D6996D01FA9163A5 /* VideoMetadataFetcher.swift */; };
 		22C4C03883DB86E008BEF963 /* ISO8601DurationParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBD4C75A2449648C9F438129 /* ISO8601DurationParser.swift */; };
+		2B2EDDF3A98BBEF7CB8134E6 /* TagInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB8FAA7CA825A14FBDE26A6C /* TagInputView.swift */; };
 		347C5FA37FCE86C9FE064055 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = CE4094BC40CD60A030622ABD /* SwiftSoup */; };
 		384F9F1857494EB118A14C2E /* ApplianceDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14E7A6471A108F3672BB68B /* ApplianceDetector.swift */; };
 		3D73245B8EE956A066827D6A /* Lora-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3D243FB3ACC2B31874388203 /* Lora-Regular.ttf */; };
@@ -27,6 +29,7 @@
 		69E483A482520AFBBD85568C /* URLRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 895AC2D9349872A304AFDCB8 /* URLRouter.swift */; };
 		7274E8EDC53759AD77E62D48 /* ReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94514113B5418A9108E161B0 /* ReviewView.swift */; };
 		7874CD4986594D8325900EC9 /* CompatibilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DE77EF4D3ED40987FB6DD69 /* CompatibilityView.swift */; };
+		78D5C4F0DD6AD2A9699D1F3A /* CookVoiceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCB137BC614BB39A69A9A813 /* CookVoiceController.swift */; };
 		80BCB22584CEDB191C379C16 /* TranscriptExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4868D168C7C6FA747AB44694 /* TranscriptExtractor.swift */; };
 		829B9B01AC4156DB59CA364A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85A8B10CE0B4F19AA0C87E74 /* ContentView.swift */; };
 		862DAB0B881F48164C3C7288 /* DietDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = C56C035BCE2DC97ABF806569 /* DietDefinition.swift */; };
@@ -35,6 +38,7 @@
 		92FC0703255EBCEBA6ADB8E4 /* SousChefTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F0BB97417274CF509B873CF /* SousChefTests.swift */; };
 		932892887064C5311BA66EA0 /* substitutions.json in Resources */ = {isa = PBXBuildFile; fileRef = E5DB10C368AE7615A17FF506 /* substitutions.json */; };
 		98ABB4195E38B3EC80555C28 /* Lora-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1EE74A288B649F9B1FC783A7 /* Lora-SemiBold.ttf */; };
+		9E4BF5BA4F11E86F358EF5FF /* MicroStepSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7560654AFD354C4655DEEC21 /* MicroStepSplitter.swift */; };
 		9F2F8AC90EA6C8D66CB562F6 /* IngredientParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA6B0D50C4629247D9083A41 /* IngredientParserTests.swift */; };
 		A023C66ED92EFC1D105BE252 /* LLMExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DC8E8C8944E55C1F03DC6D /* LLMExtractor.swift */; };
 		A71D307287F47F12A1420796 /* TranscriptLLMValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9ACA7716EC503F142D4F8B /* TranscriptLLMValidator.swift */; };
@@ -50,8 +54,10 @@
 		EFC491F1242047404813ED1F /* RecipeLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE44BBBFC6D8074C36714074 /* RecipeLibraryView.swift */; };
 		F3DFF5983E8A3920FCD815EB /* CookModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43A1CD6E33671039BE2F1D6F /* CookModeView.swift */; };
 		F5304E687B7BC179FB049DFC /* SubstitutionLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C621B64319F944043650F8B /* SubstitutionLibrary.swift */; };
+		F6069329545E157D44AB41CB /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73FFA52C6877C70560151914 /* RootView.swift */; };
 		F7063B91A1D41FC33CD2C05C /* MicrodataExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82FF8F6B3A0D2953DB61A55C /* MicrodataExtractor.swift */; };
 		FA932308D97292B1EB264831 /* SousChefApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBAFCDAE7424D9755D0E5CB1 /* SousChefApp.swift */; };
+		FF7F4CC647BE268DE8447CDC /* CookTimerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 978D73B0701FE2FF6C4C3CA7 /* CookTimerManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,11 +81,14 @@
 		324369F23CEEC663CA1EA5A0 /* ExtractionPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionPipeline.swift; sourceTree = "<group>"; };
 		3C51C8FF4F069912D4A1F95C /* TranscriptFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptFetcher.swift; sourceTree = "<group>"; };
 		3D243FB3ACC2B31874388203 /* Lora-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Lora-Regular.ttf"; sourceTree = "<group>"; };
+		42661EB886B8318D8DEFABFA /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		43A1CD6E33671039BE2F1D6F /* CookModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookModeView.swift; sourceTree = "<group>"; };
 		443FFA2EEDD23F93CCAC6408 /* ExtractionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionResult.swift; sourceTree = "<group>"; };
 		4868D168C7C6FA747AB44694 /* TranscriptExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptExtractor.swift; sourceTree = "<group>"; };
 		644C35F47DEA2B69B329D45D /* IngredientParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngredientParser.swift; sourceTree = "<group>"; };
 		647EBB3413A511930A879E0C /* SousChef.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SousChef.entitlements; sourceTree = "<group>"; };
+		73FFA52C6877C70560151914 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		7560654AFD354C4655DEEC21 /* MicroStepSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroStepSplitter.swift; sourceTree = "<group>"; };
 		778C9ACBA83889E0050DC223 /* SchemaOrgExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaOrgExtractor.swift; sourceTree = "<group>"; };
 		789EC44D856C77357E5E85A9 /* food-dictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "food-dictionary.json"; sourceTree = "<group>"; };
 		7C621B64319F944043650F8B /* SubstitutionLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubstitutionLibrary.swift; sourceTree = "<group>"; };
@@ -93,6 +102,7 @@
 		8F0BB97417274CF509B873CF /* SousChefTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SousChefTests.swift; sourceTree = "<group>"; };
 		9118C7EB140861CEAD591267 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		94514113B5418A9108E161B0 /* ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewView.swift; sourceTree = "<group>"; };
+		978D73B0701FE2FF6C4C3CA7 /* CookTimerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookTimerManager.swift; sourceTree = "<group>"; };
 		9B900B6CCB0A116CB1F75B38 /* FoodDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodDictionary.swift; sourceTree = "<group>"; };
 		9FC95E88D6EEEC8BD4D8AAFD /* DinerProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DinerProfile.swift; sourceTree = "<group>"; };
 		A14E7A6471A108F3672BB68B /* ApplianceDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplianceDetector.swift; sourceTree = "<group>"; };
@@ -108,11 +118,13 @@
 		CFC60516D7FE8F9BE2961986 /* Recipe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recipe.swift; sourceTree = "<group>"; };
 		DB59ADB64230BE82B206FCA7 /* Lora-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Lora-Bold.ttf"; sourceTree = "<group>"; };
 		DBAFCDAE7424D9755D0E5CB1 /* SousChefApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SousChefApp.swift; sourceTree = "<group>"; };
+		DCB137BC614BB39A69A9A813 /* CookVoiceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookVoiceController.swift; sourceTree = "<group>"; };
 		DF9ACA7716EC503F142D4F8B /* TranscriptLLMValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptLLMValidator.swift; sourceTree = "<group>"; };
 		E5DB10C368AE7615A17FF506 /* substitutions.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = substitutions.json; sourceTree = "<group>"; };
 		E666AFBB609BC5E58EF2B9EE /* Speech.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Speech.framework; path = System/Library/Frameworks/Speech.framework; sourceTree = SDKROOT; };
 		E935BFAA8A8292B478DA81B0 /* ProfileMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileMatcher.swift; sourceTree = "<group>"; };
 		EA6B0D50C4629247D9083A41 /* IngredientParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngredientParserTests.swift; sourceTree = "<group>"; };
+		EB8FAA7CA825A14FBDE26A6C /* TagInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagInputView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -158,8 +170,11 @@
 				43A1CD6E33671039BE2F1D6F /* CookModeView.swift */,
 				8CCCA666B0B957AABF2ED7AB /* DinerProfilesView.swift */,
 				7C9FE66F7A96F67B86A4634E /* ImportView.swift */,
+				42661EB886B8318D8DEFABFA /* OnboardingView.swift */,
 				CE44BBBFC6D8074C36714074 /* RecipeLibraryView.swift */,
 				94514113B5418A9108E161B0 /* ReviewView.swift */,
+				73FFA52C6877C70560151914 /* RootView.swift */,
+				EB8FAA7CA825A14FBDE26A6C /* TagInputView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -227,6 +242,15 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
+		803AA4BCA1244F1779E5BD24 /* CookMode */ = {
+			isa = PBXGroup;
+			children = (
+				978D73B0701FE2FF6C4C3CA7 /* CookTimerManager.swift */,
+				DCB137BC614BB39A69A9A813 /* CookVoiceController.swift */,
+			);
+			path = CookMode;
+			sourceTree = "<group>";
+		};
 		949E58DDAEDF4D96434AFE19 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
@@ -261,6 +285,7 @@
 				9118C7EB140861CEAD591267 /* Info.plist */,
 				647EBB3413A511930A879E0C /* SousChef.entitlements */,
 				DBAFCDAE7424D9755D0E5CB1 /* SousChefApp.swift */,
+				803AA4BCA1244F1779E5BD24 /* CookMode */,
 				61597B0BA0F54BB5FFAD5583 /* DesignSystem */,
 				A55B94175EF8C3AA7B5191E3 /* Diet */,
 				DA70D2B8486153EBD5AD31C8 /* Extraction */,
@@ -283,6 +308,7 @@
 				BBD4C75A2449648C9F438129 /* ISO8601DurationParser.swift */,
 				01DC8E8C8944E55C1F03DC6D /* LLMExtractor.swift */,
 				82FF8F6B3A0D2953DB61A55C /* MicrodataExtractor.swift */,
+				7560654AFD354C4655DEEC21 /* MicroStepSplitter.swift */,
 				A84D65E08565F7B6F18BB383 /* RecipeValidator.swift */,
 				778C9ACBA83889E0050DC223 /* SchemaOrgExtractor.swift */,
 				4868D168C7C6FA747AB44694 /* TranscriptExtractor.swift */,
@@ -408,6 +434,8 @@
 				7874CD4986594D8325900EC9 /* CompatibilityView.swift in Sources */,
 				829B9B01AC4156DB59CA364A /* ContentView.swift in Sources */,
 				F3DFF5983E8A3920FCD815EB /* CookModeView.swift in Sources */,
+				FF7F4CC647BE268DE8447CDC /* CookTimerManager.swift in Sources */,
+				78D5C4F0DD6AD2A9699D1F3A /* CookVoiceController.swift in Sources */,
 				AEA99155ABF7813A92A3D68B /* DesignSystem.swift in Sources */,
 				862DAB0B881F48164C3C7288 /* DietDefinition.swift in Sources */,
 				6251B9CBA7B4C26920D74612 /* DinerProfile.swift in Sources */,
@@ -420,15 +448,19 @@
 				E12F6B6B1AF34AC660AB347C /* ImportView.swift in Sources */,
 				5D1C602B043AD370184C67AE /* IngredientParser.swift in Sources */,
 				A023C66ED92EFC1D105BE252 /* LLMExtractor.swift in Sources */,
+				9E4BF5BA4F11E86F358EF5FF /* MicroStepSplitter.swift in Sources */,
 				F7063B91A1D41FC33CD2C05C /* MicrodataExtractor.swift in Sources */,
+				142E6680617222E6C17C3D2C /* OnboardingView.swift in Sources */,
 				1D7F5DD1A0FF9FA993931E04 /* ProfileMatcher.swift in Sources */,
 				4C838D2C02B3D66560998B6E /* Recipe.swift in Sources */,
 				EFC491F1242047404813ED1F /* RecipeLibraryView.swift in Sources */,
 				5AAA4D33D6D64498DFEA7FE4 /* RecipeValidator.swift in Sources */,
 				7274E8EDC53759AD77E62D48 /* ReviewView.swift in Sources */,
+				F6069329545E157D44AB41CB /* RootView.swift in Sources */,
 				87CF41CD4480899D5D932520 /* SchemaOrgExtractor.swift in Sources */,
 				FA932308D97292B1EB264831 /* SousChefApp.swift in Sources */,
 				F5304E687B7BC179FB049DFC /* SubstitutionLibrary.swift in Sources */,
+				2B2EDDF3A98BBEF7CB8134E6 /* TagInputView.swift in Sources */,
 				80BCB22584CEDB191C379C16 /* TranscriptExtractor.swift in Sources */,
 				4D6D22F7062D0D69047BD0B4 /* TranscriptFetcher.swift in Sources */,
 				A71D307287F47F12A1420796 /* TranscriptLLMValidator.swift in Sources */,

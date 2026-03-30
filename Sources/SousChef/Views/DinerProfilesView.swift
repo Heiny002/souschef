@@ -26,20 +26,22 @@ struct DinerProfilesView: View {
                 }
             }
             .sheet(isPresented: $showAddSheet) {
-                ProfileEditSheet(profile: nil) { name, diets, restrictions, allergies in
-                    let p = DinerProfile(name: name)
-                    p.diets = diets
-                    p.customRestrictions = restrictions
-                    p.allergies = allergies
+                ProfileEditSheet(profile: nil) { data in
+                    let p = DinerProfile(name: data.name)
+                    p.diets = data.diets
+                    p.customRestrictions = data.ingredientsToAvoid
+                    p.allergies = data.allergies
+                    p.favoriteFoods = data.favoriteFoods
                     modelContext.insert(p)
                 }
             }
             .sheet(item: $editingProfile) { profile in
-                ProfileEditSheet(profile: profile) { name, diets, restrictions, allergies in
-                    profile.name = name
-                    profile.diets = diets
-                    profile.customRestrictions = restrictions
-                    profile.allergies = allergies
+                ProfileEditSheet(profile: profile) { data in
+                    profile.name = data.name
+                    profile.diets = data.diets
+                    profile.customRestrictions = data.ingredientsToAvoid
+                    profile.allergies = data.allergies
+                    profile.favoriteFoods = data.favoriteFoods
                 }
             }
         }
@@ -47,11 +49,7 @@ struct DinerProfilesView: View {
 
     @ViewBuilder
     private var content: some View {
-        if profiles.isEmpty {
-            emptyState
-        } else {
-            profileList
-        }
+        if profiles.isEmpty { emptyState } else { profileList }
     }
 
     private var profileList: some View {
@@ -66,9 +64,7 @@ struct DinerProfilesView: View {
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
-                        Button {
-                            editingProfile = profile
-                        } label: {
+                        Button { editingProfile = profile } label: {
                             Label("Edit", systemImage: "pencil")
                         }
                         .tint(Color.scAccent)
@@ -121,7 +117,7 @@ private struct ProfileRow: View {
                     .foregroundStyle(Color.scAccent)
             }
             if !profile.allergies.isEmpty {
-                Text("Allergies: " + profile.allergies.joined(separator: ", "))
+                Text("Restrictions: " + profile.allergies.joined(separator: ", "))
                     .font(.scCaption)
                     .foregroundStyle(Color.scTextSecondary)
             }
@@ -130,27 +126,39 @@ private struct ProfileRow: View {
     }
 }
 
+// MARK: - Profile data transfer
+
+struct ProfileData {
+    var name: String
+    var diets: [String]
+    var ingredientsToAvoid: [String]
+    var allergies: [String]
+    var favoriteFoods: [String]
+}
+
 // MARK: - Profile Edit Sheet
 
 struct ProfileEditSheet: View {
     let profile: DinerProfile?
-    let onSave: (String, [String], [String], [String]) -> Void
+    let onSave: (ProfileData) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var selectedDiets: Set<String>
-    @State private var restrictionText: String
-    @State private var allergyText: String
+    @State private var ingredientsToAvoid: [String]
+    @State private var allergies: [String]
+    @State private var favoriteFoods: [String]
 
     private let allDiets = DietLibrary.shared.diets
 
-    init(profile: DinerProfile?, onSave: @escaping (String, [String], [String], [String]) -> Void) {
+    init(profile: DinerProfile?, onSave: @escaping (ProfileData) -> Void) {
         self.profile = profile
         self.onSave = onSave
         _name = State(initialValue: profile?.name ?? "")
         _selectedDiets = State(initialValue: Set(profile?.diets ?? []))
-        _restrictionText = State(initialValue: profile?.customRestrictions.joined(separator: ", ") ?? "")
-        _allergyText = State(initialValue: profile?.allergies.joined(separator: ", ") ?? "")
+        _ingredientsToAvoid = State(initialValue: profile?.customRestrictions ?? [])
+        _allergies = State(initialValue: profile?.allergies ?? [])
+        _favoriteFoods = State(initialValue: profile?.favoriteFoods ?? [])
     }
 
     var body: some View {
@@ -158,19 +166,21 @@ struct ProfileEditSheet: View {
             ZStack {
                 Color.scBackground.ignoresSafeArea()
                 Form {
+                    // Name
                     Section("Name") {
                         TextField("e.g. Partner, Child 1", text: $name)
                             .foregroundStyle(Color.scTextPrimary)
                     }
                     .listRowBackground(Color.scSurface)
 
+                    // Diets
                     Section("Diets") {
                         ForEach(allDiets) { diet in
                             Toggle(diet.name, isOn: Binding(
                                 get: { selectedDiets.contains(diet.id) },
                                 set: { on in
                                     if on { selectedDiets.insert(diet.id) }
-                                    else { selectedDiets.remove(diet.id) }
+                                    else  { selectedDiets.remove(diet.id) }
                                 }
                             ))
                             .tint(Color.scAccent)
@@ -179,15 +189,48 @@ struct ProfileEditSheet: View {
                     }
                     .listRowBackground(Color.scSurface)
 
-                    Section("Custom Restrictions") {
-                        TextField("e.g. cilantro, mushrooms (comma separated)", text: $restrictionText)
-                            .foregroundStyle(Color.scTextPrimary)
+                    // Ingredients to Avoid
+                    Section {
+                        TagInputView(
+                            placeholder: "Type ingredient + comma to add",
+                            tags: $ingredientsToAvoid
+                        )
+                    } header: {
+                        Text("Ingredients to Avoid")
+                    } footer: {
+                        Text("Flagged red in recipe compatibility")
+                            .font(.scCaption)
+                            .foregroundStyle(Color.scTextSecondary)
                     }
                     .listRowBackground(Color.scSurface)
 
-                    Section("Allergies") {
-                        TextField("e.g. peanuts, shellfish (comma separated)", text: $allergyText)
-                            .foregroundStyle(Color.scTextPrimary)
+                    // Restricted Ingredients / Allergies
+                    Section {
+                        TagInputView(
+                            placeholder: "Type allergen + comma to add",
+                            tags: $allergies
+                        )
+                    } header: {
+                        Text("Restricted Ingredients/Allergies")
+                    } footer: {
+                        Text("e.g. peanuts, shellfish, tree nuts")
+                            .font(.scCaption)
+                            .foregroundStyle(Color.scTextSecondary)
+                    }
+                    .listRowBackground(Color.scSurface)
+
+                    // Favorite Foods
+                    Section {
+                        TagInputView(
+                            placeholder: "Type food + comma to add",
+                            tags: $favoriteFoods
+                        )
+                    } header: {
+                        Text("Favorite Foods")
+                    } footer: {
+                        Text("Used for personalized suggestions")
+                            .font(.scCaption)
+                            .foregroundStyle(Color.scTextSecondary)
                     }
                     .listRowBackground(Color.scSurface)
                 }
@@ -204,15 +247,13 @@ struct ProfileEditSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        let restrictions = restrictionText
-                            .split(separator: ",")
-                            .map { $0.trimmingCharacters(in: .whitespaces) }
-                            .filter { !$0.isEmpty }
-                        let allergies = allergyText
-                            .split(separator: ",")
-                            .map { $0.trimmingCharacters(in: .whitespaces) }
-                            .filter { !$0.isEmpty }
-                        onSave(name, Array(selectedDiets), restrictions, allergies)
+                        onSave(ProfileData(
+                            name: name,
+                            diets: Array(selectedDiets),
+                            ingredientsToAvoid: ingredientsToAvoid,
+                            allergies: allergies,
+                            favoriteFoods: favoriteFoods
+                        ))
                         dismiss()
                     }
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -233,6 +274,7 @@ struct ProfileEditSheet: View {
     p1.diets = ["vegan", "gluten-free"]
     let p2 = DinerProfile(name: "Kid")
     p2.allergies = ["peanuts"]
+    p2.favoriteFoods = ["pasta", "pizza"]
     ctx.insert(p1); ctx.insert(p2)
     return DinerProfilesView().modelContainer(container).preferredColorScheme(.dark)
 }

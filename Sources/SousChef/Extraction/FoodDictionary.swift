@@ -94,6 +94,11 @@ final class FoodDictionary: @unchecked Sendable {
         entries.filter { $0.categories.contains(category.lowercased()) }
     }
 
+    /// Sorted list of all canonical entry names for autocomplete.
+    func allNames() -> [String] {
+        entries.map { $0.name.lowercased() }.sorted()
+    }
+
     // MARK: - Loading
 
     private func load() {

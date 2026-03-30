@@ -26,10 +26,71 @@ actor VideoMetadataFetcher {
         case .youTube:
             return try await fetchOEmbed(endpoint: "https://www.youtube.com/oembed", videoURL: videoURL)
         case .instagram:
+            // Instagram oEmbed has required auth since 2020 — fall back to page HTML scraping
+            if let meta = try? await fetchInstagramPageMeta(videoURL: videoURL) {
+                return meta
+            }
+            // Last resort: try oEmbed anyway (may work for some embed configurations)
             return try await fetchOEmbed(endpoint: "https://api.instagram.com/oembed", videoURL: videoURL)
         case .webPage:
             throw VideoMetadataError.unsupportedSource
         }
+    }
+
+    // MARK: - Instagram HTML scraping
+
+    private func fetchInstagramPageMeta(videoURL: String) async throws -> VideoMetadata {
+        guard let url = URL(string: videoURL) else { throw VideoMetadataError.invalidURL }
+
+        var request = URLRequest(url: url)
+        // Use a mobile browser UA so Instagram returns a full HTML page
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode) else {
+            throw VideoMetadataError.apiError(
+                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0
+            )
+        }
+        guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
+            throw VideoMetadataError.malformedResponse
+        }
+
+        let caption = extractOGContent(from: html, property: "og:description")
+        let title   = extractOGContent(from: html, property: "og:title")
+        let thumb   = extractOGContent(from: html, property: "og:image")
+
+        guard caption != nil || title != nil else { throw VideoMetadataError.malformedResponse }
+
+        return VideoMetadata(
+            title: title,
+            authorName: nil,
+            caption: caption ?? title,   // Reels put caption in og:description
+            thumbnailURL: thumb
+        )
+    }
+
+    /// Extract the `content` attribute of a `<meta property="..." content="...">` tag.
+    private func extractOGContent(from html: String, property: String) -> String? {
+        // Try both attribute orderings Instagram might use
+        let patterns = [
+            "property=[\"']\(NSRegularExpression.escapedPattern(for: property))[\"'][^>]+content=[\"']([^\"']*)[\"']",
+            "content=[\"']([^\"']*)[\"'][^>]+property=[\"']\(NSRegularExpression.escapedPattern(for: property))[\"']",
+        ]
+        for pattern in patterns {
+            guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+                  let match = re.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                  let range = Range(match.range(at: 1), in: html) else { continue }
+            return String(html[range]).htmlEntityDecoded
+        }
+        return nil
     }
 
     // MARK: - Private
@@ -66,6 +127,33 @@ actor VideoMetadataFetcher {
             caption: caption,
             thumbnailURL: thumbnailURL
         )
+    }
+}
+
+// MARK: - HTML entity decoding
+
+private extension String {
+    var htmlEntityDecoded: String {
+        var s = self
+        let entities: [(String, String)] = [
+            ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
+            ("&quot;", "\""), ("&#39;", "'"), ("&apos;", "'"),
+            ("&nbsp;", " "), ("&#x2F;", "/"), ("&#x27;", "'"),
+        ]
+        for (entity, char) in entities { s = s.replacingOccurrences(of: entity, with: char) }
+        // Numeric entities &#NNN;
+        if let re = try? NSRegularExpression(pattern: "&#(\\d+);") {
+            let matches = re.matches(in: s, range: NSRange(s.startIndex..., in: s)).reversed()
+            for match in matches {
+                if let r = Range(match.range(at: 1), in: s),
+                   let code = UInt32(s[r]),
+                   let scalar = Unicode.Scalar(code) {
+                    let fullRange = Range(match.range, in: s)!
+                    s.replaceSubrange(fullRange, with: String(scalar))
+                }
+            }
+        }
+        return s
     }
 }
 
