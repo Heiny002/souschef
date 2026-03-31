@@ -26,25 +26,28 @@ enum CreatorProfileSearcher {
     // MARK: - Public
 
     /// Discover profile information for a creator handle (without the @ prefix).
+    /// Runs server web search and direct aggregator probes in parallel for speed.
     static func discover(handle: String, keywords: [String]) async -> DiscoveredProfile {
-        let (links, realName) = await fetchProfileLinks(handle: handle)
-        guard !links.isEmpty else {
-            return DiscoveredProfile(realName: nil, recipePageURLs: [], blogURLs: [])
-        }
+        // Run web search and direct aggregator probes concurrently
+        async let serverResult = fetchProfileLinks(handle: handle)
+        async let directProbes = probeAggregatorURLs(handle: handle)
 
-        var aggregatorURLs: [String] = []
+        let (links, realName) = await serverResult
+        let probedAggregators = await directProbes
+
+        // Direct probes go first (more reliable than search-discovered URLs)
+        var aggregatorURLs: [String] = probedAggregators
         var blogURLs: [String] = []
 
         for link in links {
             guard let url = URL(string: link.url),
                   let host = url.host?.lowercased() else { continue }
-
             if socialHosts.contains(where: { host.hasSuffix($0) }) { continue }
-
             if aggregatorHosts.contains(where: { host.hasSuffix($0) }) {
-                aggregatorURLs.append(link.url)
+                if !aggregatorURLs.contains(link.url) {
+                    aggregatorURLs.append(link.url)
+                }
             } else {
-                // Any non-social, non-aggregator URL is a potential blog
                 blogURLs.append(link.url)
             }
         }
@@ -52,7 +55,7 @@ enum CreatorProfileSearcher {
         // Navigate aggregator pages for keyword-matched recipe links
         let fetcher = WebPageFetcher()
         var recipePageURLs: [String] = []
-        for aggURL in aggregatorURLs.prefix(2) {
+        for aggURL in aggregatorURLs.prefix(5) {   // up to 5: probes + search finds
             let found = await extractKeywordLinks(from: aggURL, keywords: keywords, fetcher: fetcher)
             for url in found where !recipePageURLs.contains(url) {
                 recipePageURLs.append(url)
@@ -64,6 +67,49 @@ enum CreatorProfileSearcher {
             recipePageURLs: recipePageURLs,
             blogURLs: Array(blogURLs.prefix(3))
         )
+    }
+
+    // MARK: - Direct aggregator probe
+
+    /// Aggregator services that use https://{host}/{handle} URL patterns.
+    /// HEAD-check all of them in parallel — fast 5-second timeout per request.
+    private static let aggregatorPatterns: [String] = [
+        "https://linktr.ee/{handle}",
+        "https://beacons.ai/{handle}",
+        "https://bio.link/{handle}",
+        "https://lnk.bio/{handle}",
+        "https://allmylinks.com/{handle}",
+        "https://campsite.bio/{handle}",
+        "https://hoo.be/{handle}",
+        "https://stan.store/{handle}",
+        "https://tap.bio/@{handle}",
+        "https://provecho.bio/{handle}",
+        "https://provecho.co/{handle}",
+    ]
+
+    private static func probeAggregatorURLs(handle: String) async -> [String] {
+        let candidates = aggregatorPatterns.map {
+            $0.replacingOccurrences(of: "{handle}", with: handle)
+        }
+
+        return await withTaskGroup(of: (String, Bool).self) { group in
+            for urlString in candidates {
+                group.addTask {
+                    guard let url = URL(string: urlString) else { return (urlString, false) }
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "HEAD"
+                    req.timeoutInterval = 5
+                    let exists = (try? await URLSession.shared.data(for: req))
+                        .map { _, resp in (resp as? HTTPURLResponse)?.statusCode == 200 } ?? false
+                    return (urlString, exists)
+                }
+            }
+            var found: [String] = []
+            for await (urlString, exists) in group where exists {
+                found.append(urlString)
+            }
+            return found
+        }
     }
 
     // MARK: - Server request
