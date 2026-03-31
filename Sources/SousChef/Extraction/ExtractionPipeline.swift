@@ -64,21 +64,44 @@ actor ExtractionPipeline {
 
         case .linkInBio:
             progress?("Finding creator's blog…")
-            if let blogURL = await BioLinkResolver.shared.resolve(
+            if let resolvedURL = await BioLinkResolver.shared.resolve(
                 authorName: metadata?.authorName,
                 authorURL: metadata?.authorURL,
                 serverBlogURL: videoTranscript?.blogURL
             ) {
-                progress?("Searching for recipe…")
                 let keywords = CaptionAnalyzer.extractKeywords(
                     from: allCaptionText, using: FoodDictionary.shared)
-                if !keywords.isEmpty,
-                   let recipePageURL = await BlogRecipeSearch.search(
-                    blogURL: blogURL, keywords: keywords) {
+
+                // If resolver returned a specific page (not just a domain root), try it
+                // directly first — aggregators often link straight to the recipe post.
+                if let resolvedPath = URL(string: resolvedURL)?.path, resolvedPath.count > 1 {
                     progress?("Extracting recipe…")
-                    if let webResult = try? await extractFromWebPage(urlString: recipePageURL),
+                    if let webResult = try? await extractFromWebPage(urlString: resolvedURL),
                        webResult.isViable {
-                        return webResult  // Zero LLM tokens — blog has Schema.org
+                        return webResult
+                    }
+                }
+
+                // Search the blog root by keywords (handles both root URLs and post URLs
+                // returned by aggregator scoring — always strips to scheme+host).
+                let blogRoot: String
+                if let url = URL(string: resolvedURL),
+                   let scheme = url.scheme, let host = url.host,
+                   (url.path.count > 1) {
+                    blogRoot = "\(scheme)://\(host)"
+                } else {
+                    blogRoot = resolvedURL
+                }
+
+                if !keywords.isEmpty {
+                    progress?("Searching for recipe…")
+                    if let recipePageURL = await BlogRecipeSearch.search(
+                        blogURL: blogRoot, keywords: keywords) {
+                        progress?("Extracting recipe…")
+                        if let webResult = try? await extractFromWebPage(urlString: recipePageURL),
+                           webResult.isViable {
+                            return webResult
+                        }
                     }
                 }
             }
@@ -110,7 +133,100 @@ actor ExtractionPipeline {
             return result
         }
         let validator = TranscriptLLMValidator(apiKey: apiKey)
-        return (try? await validator.validate(transcript: fullText, partial: result)) ?? result
+        result = (try? await validator.validate(transcript: fullText, partial: result)) ?? result
+
+        // Step 5: SC-076 — Two-stage web search (specific first, then similar as fallback)
+        if !result.isViable || result.confidence < ConfidenceThreshold.reject {
+            let keywords = CaptionAnalyzer.extractKeywords(from: allCaptionText, using: FoodDictionary.shared)
+            let authorName = metadata?.authorName ?? authorHandle(from: metadata?.authorURL)
+
+            // Stage A: Targeted search — try to find THE specific recipe from this creator
+            let specificQuery = buildSpecificQuery(
+                authorName: authorName,
+                title: result.title ?? titleHint,
+                keywords: keywords
+            )
+            if let query = specificQuery {
+                progress?("Searching for recipe…")
+                let searchResults = await WebRecipeSearcher.search(query: query)
+                for candidate in searchResults {
+                    if let webResult = try? await extractFromWebPage(urlString: candidate.url),
+                       webResult.isViable {
+                        var substituteResult = webResult
+                        substituteResult.isSubstitute = true
+                        substituteResult.originalSourceURL = urlString
+                        return substituteResult
+                    }
+                }
+            }
+
+            // Stage B: Collect up to 2 similar recipes as alternatives for the failure UI
+            let genericQuery = buildGenericQuery(title: result.title ?? titleHint, keywords: keywords)
+            if let query = genericQuery {
+                progress?("Finding similar recipes…")
+                let searchResults = await WebRecipeSearcher.search(query: query)
+                var alternatives: [ExtractionResult] = []
+                for candidate in searchResults {
+                    if let webResult = try? await extractFromWebPage(urlString: candidate.url),
+                       webResult.isViable {
+                        var alt = webResult
+                        alt.isSubstitute = true
+                        alt.originalSourceURL = urlString
+                        alternatives.append(alt)
+                        if alternatives.count >= 2 { break }
+                    }
+                }
+                result.alternatives = alternatives
+            }
+
+            // Annotate the failed result for the failure UI
+            result.captionPreview = allCaptionText.isEmpty ? nil : String(allCaptionText.prefix(200))
+            result.authorHint = authorName
+            result.thumbnailURL = metadata?.thumbnailURL
+        }
+
+        return result
+    }
+
+    /// Extract Instagram/TikTok handle from a profile URL (e.g. instagram.com/username/).
+    private func authorHandle(from urlString: String?) -> String? {
+        guard let urlString,
+              let url = URL(string: urlString),
+              let host = url.host?.lowercased() else { return nil }
+        let path = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
+        guard let handle = path.first, handle.count >= 2 else { return nil }
+        // Exclude known non-username path segments
+        let reserved = Set(["reel", "p", "explore", "accounts", "login", "direct", "stories", "tv"])
+        return reserved.contains(handle.lowercased()) ? nil : "@\(handle)"
+    }
+
+    /// Build a targeted search query using the creator's name/handle + dish keywords.
+    /// Goal: find the specific recipe from this creator's blog/site.
+    private func buildSpecificQuery(authorName: String?, title: String?, keywords: [String]) -> String? {
+        let dishSignal = buildGenericQuery(title: title, keywords: keywords) ?? ""
+        guard !dishSignal.isEmpty else { return nil }
+
+        if let authorName, !authorName.isEmpty {
+            // e.g. "@jenneatsgoood roasted pepper pasta recipe"
+            return "\(authorName) \(dishSignal)"
+        }
+        return dishSignal
+    }
+
+    /// Build a generic recipe search query from available title/keyword signals.
+    private func buildGenericQuery(title: String?, keywords: [String]) -> String? {
+        if let title, !title.isEmpty {
+            let lower = title.lowercased()
+            let isUselessTitle = lower.contains("instagram") || lower.contains("tiktok") ||
+                                 (lower.contains("•") && lower.contains("reel"))
+            if !isUselessTitle {
+                return title.hasSuffix("recipe") ? title : "\(title) recipe"
+            }
+        }
+        if !keywords.isEmpty {
+            return "\(keywords.joined(separator: " ")) recipe"
+        }
+        return nil
     }
 
     // MARK: - Web Extraction Chain

@@ -11,6 +11,8 @@ struct ImportView: View {
     @State private var errorMessage: String?
     @State private var showReview = false
     @State private var statusText = ""  // SC-075: dynamic progress from bio link resolution
+    @State private var showSimilarSheet = false
+    @State private var directLinkText = ""  // user-pasted direct recipe URL on failure
 
     enum ImportPhase: Equatable {
         case idle
@@ -18,6 +20,7 @@ struct ImportView: View {
         case extracting
         case done
         case error
+        case extractionFailed  // extraction ran but found nothing; alternatives may exist
     }
 
     var body: some View {
@@ -26,11 +29,19 @@ struct ImportView: View {
                 Color.scBackground.ignoresSafeArea()
                 VStack(spacing: Spacing.lg) {
                     Spacer()
-                    headerSection
-                    urlInputSection
-                    statusSection
+                    if phase == .extractionFailed {
+                        extractionFailedSection
+                    } else {
+                        headerSection
+                        urlInputSection
+                        statusSection
+                    }
                     Spacer()
-                    importButton
+                    if phase == .extractionFailed {
+                        failureActionButtons
+                    } else {
+                        importButton
+                    }
                 }
                 .padding(Spacing.md)
             }
@@ -40,8 +51,18 @@ struct ImportView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(phase == .extractionFailed ? "Done" : "Cancel") { dismiss() }
                         .foregroundStyle(Color.scTextSecondary)
+                }
+                if phase == .extractionFailed {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Try Again") {
+                            phase = .idle
+                            extractionResult = nil
+                            directLinkText = ""
+                        }
+                        .foregroundStyle(Color.scAccent)
+                    }
                 }
             }
             .navigationDestination(isPresented: $showReview) {
@@ -51,6 +72,27 @@ struct ImportView: View {
                         onSave: { _ in dismiss() },
                         onRetry: { phase = .idle; extractionResult = nil }
                     )
+                }
+            }
+            .sheet(isPresented: $showSimilarSheet) {
+                if let result = extractionResult, !result.alternatives.isEmpty {
+                    SimilarRecipePreviewSheet(
+                        alternatives: result.alternatives,
+                        onAccept: { chosen in
+                            showSimilarSheet = false
+                            extractionResult = chosen
+                            phase = .done
+                            showReview = true
+                        },
+                        onPasteLink: {
+                            showSimilarSheet = false
+                        },
+                        onDismiss: {
+                            showSimilarSheet = false
+                        }
+                    )
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.hidden)
                 }
             }
             .onAppear { pasteFromClipboard() }
@@ -114,6 +156,123 @@ struct ImportView: View {
         }
     }
 
+    // MARK: - Extraction Failure UI
+
+    private var extractionFailedSection: some View {
+        VStack(spacing: Spacing.md) {
+            Image(systemName: "exclamationmark.magnifyingglass")
+                .font(.system(size: 48))
+                .foregroundStyle(Color.scAccent.opacity(0.7))
+
+            VStack(spacing: Spacing.xs) {
+                Text("Recipe Not Found")
+                    .font(.scHeadline)
+                    .foregroundStyle(Color.scTextPrimary)
+
+                if let result = extractionResult, let authorHint = result.authorHint {
+                    Text("We searched the caption from \(authorHint) but couldn't find a recipe.")
+                        .font(.scBody)
+                        .foregroundStyle(Color.scTextSecondary)
+                        .multilineTextAlignment(.center)
+                } else {
+                    Text("We searched the caption but couldn't find a recipe at this link.")
+                        .font(.scBody)
+                        .foregroundStyle(Color.scTextSecondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                if let result = extractionResult, let preview = result.captionPreview, !preview.isEmpty {
+                    Text("\u{201C}\(preview.trimmingCharacters(in: .whitespacesAndNewlines))\u{2026}\u{201D}")
+                        .font(.scCaption)
+                        .foregroundStyle(Color.scTextSecondary.opacity(0.7))
+                        .italic()
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .padding(.top, Spacing.xs)
+                }
+            }
+
+            // Direct link paste field
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("Paste the direct recipe link:")
+                    .font(.scCaption)
+                    .foregroundStyle(Color.scTextSecondary)
+                HStack {
+                    Image(systemName: "link")
+                        .foregroundStyle(Color.scTextSecondary)
+                        .frame(width: 20)
+                    TextField("https://", text: $directLinkText)
+                        .font(.scBody)
+                        .foregroundStyle(Color.scTextPrimary)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                    if !directLinkText.isEmpty {
+                        Button {
+                            directLinkText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(Color.scTextSecondary)
+                        }
+                    }
+                }
+                .padding(Spacing.md)
+                .background(Color.scSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.scBorder, lineWidth: 1)
+                )
+            }
+        }
+    }
+
+    private var failureActionButtons: some View {
+        VStack(spacing: Spacing.sm) {
+            // Primary: try the pasted direct link
+            Button {
+                urlText = directLinkText.trimmingCharacters(in: .whitespaces)
+                phase = .idle
+                extractionResult = nil
+                directLinkText = ""
+                Task { await runImport() }
+            } label: {
+                Label("Try This Link", systemImage: "arrow.down.circle.fill")
+                    .font(.scLabel)
+                    .frame(maxWidth: .infinity)
+                    .padding(Spacing.md)
+                    .background(
+                        directLinkText.trimmingCharacters(in: .whitespaces).hasPrefix("http")
+                            ? Color.scAccent : Color.scAccent.opacity(0.35)
+                    )
+                    .foregroundStyle(Color.scBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .disabled(!directLinkText.trimmingCharacters(in: .whitespaces).hasPrefix("http"))
+
+            // Secondary: see similar recipes (only shown when alternatives exist)
+            if let result = extractionResult, !result.alternatives.isEmpty {
+                Button {
+                    showSimilarSheet = true
+                } label: {
+                    Label(
+                        result.alternatives.count == 1 ? "See a Similar Recipe" : "See \(result.alternatives.count) Similar Recipes",
+                        systemImage: "sparkle.magnifyingglass"
+                    )
+                    .font(.scLabel)
+                    .frame(maxWidth: .infinity)
+                    .padding(Spacing.md)
+                    .background(Color.scSurface)
+                    .foregroundStyle(Color.scTextPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12).stroke(Color.scBorder, lineWidth: 1)
+                    )
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private var statusSection: some View {
         switch phase {
@@ -126,7 +285,7 @@ struct ImportView: View {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 Text("Recipe found!").font(.scBody).foregroundStyle(Color.scTextPrimary)
             }
-        case .idle, .error:
+        case .idle, .error, .extractionFailed:
             EmptyView()
         }
     }
@@ -171,7 +330,7 @@ struct ImportView: View {
 
     private var canImport: Bool {
         !urlText.trimmingCharacters(in: .whitespaces).isEmpty &&
-        phase != .fetching && phase != .extracting
+        phase != .fetching && phase != .extracting && phase != .extractionFailed
     }
 
     private var importButtonBackground: Color {
@@ -180,9 +339,10 @@ struct ImportView: View {
 
     private var urlFieldBorderColor: Color {
         switch phase {
-        case .error: return Color.red.opacity(0.5)
-        case .done:  return Color.green.opacity(0.4)
-        default:     return Color.scBorder
+        case .error:             return Color.red.opacity(0.5)
+        case .done:              return Color.green.opacity(0.4)
+        case .extractionFailed:  return Color.scAccent.opacity(0.4)
+        default:                 return Color.scBorder
         }
     }
 
@@ -231,8 +391,9 @@ struct ImportView: View {
                     phase = .done
                     showReview = true
                 } else {
-                    phase = .error
-                    errorMessage = "Couldn't find a recipe at that URL. Try a different link."
+                    // Store result (may have .alternatives and .captionPreview) and show failure UI
+                    extractionResult = result
+                    phase = .extractionFailed
                 }
             }
         } catch {

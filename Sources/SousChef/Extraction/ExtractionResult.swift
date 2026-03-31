@@ -1,7 +1,7 @@
 import Foundation
 
 /// A partially or fully extracted recipe from one layer of the extraction chain.
-struct ExtractionResult {
+struct ExtractionResult: Sendable {
     var title: String?
     var recipeYield: String?
     var prepTime: Int?     // seconds
@@ -13,6 +13,12 @@ struct ExtractionResult {
     var description: String?
     var confidence: Double  // 0.0 – 1.0
     var extractionMethod: String
+    var isSubstitute: Bool = false       // true when result came from web search fallback
+    var originalSourceURL: String?       // the video URL the user originally submitted
+    var thumbnailURL: String?            // recipe photo URL (from Schema.org image field or oEmbed)
+    var alternatives: [ExtractionResult] = []  // similar recipes collected when primary extraction fails
+    var captionPreview: String?          // snippet of searched text shown in failure UI
+    var authorHint: String?              // creator name/handle for failure UI copy
 
     init(extractionMethod: String) {
         self.ingredients = []
@@ -28,12 +34,12 @@ struct ExtractionResult {
     }
 }
 
-struct RawIngredient {
+struct RawIngredient: Sendable {
     var text: String
     var section: String?
 }
 
-struct RawStep {
+struct RawStep: Sendable {
     var order: Int
     var text: String
 }

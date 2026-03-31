@@ -15,6 +15,7 @@
 		21A36AEB84A1CF6CF499FD33 /* VideoMetadataFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6927B3D6996D01FA9163A5 /* VideoMetadataFetcher.swift */; };
 		22C4C03883DB86E008BEF963 /* ISO8601DurationParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBD4C75A2449648C9F438129 /* ISO8601DurationParser.swift */; };
 		2B2EDDF3A98BBEF7CB8134E6 /* TagInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB8FAA7CA825A14FBDE26A6C /* TagInputView.swift */; };
+		2FDC295AC4E64BC6DBC9C4EE /* WebRecipeSearcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF90F98FC541EF3FA381CB38 /* WebRecipeSearcher.swift */; };
 		347C5FA37FCE86C9FE064055 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = CE4094BC40CD60A030622ABD /* SwiftSoup */; };
 		384F9F1857494EB118A14C2E /* ApplianceDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14E7A6471A108F3672BB68B /* ApplianceDetector.swift */; };
 		3D73245B8EE956A066827D6A /* Lora-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3D243FB3ACC2B31874388203 /* Lora-Regular.ttf */; };
@@ -50,6 +51,7 @@
 		AF8990BE852D1D55206D198B /* BioLinkResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7FA7EC42E315D9108E0DAA /* BioLinkResolver.swift */; };
 		B85588E48D01A0F24BF38630 /* Lora-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DB59ADB64230BE82B206FCA7 /* Lora-Bold.ttf */; };
 		CB9803E4AC016C721BE76EB5 /* diets.json in Resources */ = {isa = PBXBuildFile; fileRef = 81798C3D777699D214B6CF20 /* diets.json */; };
+		DA00F67E30D9541957FE96C0 /* SimilarRecipePreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48E434BEE39A52AF6BEC478 /* SimilarRecipePreviewSheet.swift */; };
 		DAD44762FA7BCEC58675730D /* DinerProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CCCA666B0B957AABF2ED7AB /* DinerProfilesView.swift */; };
 		DB8955E2B5E4A8E5D32BEFBD /* CloudKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07D492E365A4AB46C47203BF /* CloudKit.framework */; };
 		E0837A5412C3972BF9661253 /* HeuristicExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3004C4972FFDBE1BE2A0023B /* HeuristicExtractor.swift */; };
@@ -127,7 +129,9 @@
 		DB59ADB64230BE82B206FCA7 /* Lora-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Lora-Bold.ttf"; sourceTree = "<group>"; };
 		DBAFCDAE7424D9755D0E5CB1 /* SousChefApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SousChefApp.swift; sourceTree = "<group>"; };
 		DCB137BC614BB39A69A9A813 /* CookVoiceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookVoiceController.swift; sourceTree = "<group>"; };
+		DF90F98FC541EF3FA381CB38 /* WebRecipeSearcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRecipeSearcher.swift; sourceTree = "<group>"; };
 		DF9ACA7716EC503F142D4F8B /* TranscriptLLMValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptLLMValidator.swift; sourceTree = "<group>"; };
+		E48E434BEE39A52AF6BEC478 /* SimilarRecipePreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimilarRecipePreviewSheet.swift; sourceTree = "<group>"; };
 		E5DB10C368AE7615A17FF506 /* substitutions.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = substitutions.json; sourceTree = "<group>"; };
 		E666AFBB609BC5E58EF2B9EE /* Speech.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Speech.framework; path = System/Library/Frameworks/Speech.framework; sourceTree = SDKROOT; };
 		E935BFAA8A8292B478DA81B0 /* ProfileMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileMatcher.swift; sourceTree = "<group>"; };
@@ -190,6 +194,7 @@
 				CE44BBBFC6D8074C36714074 /* RecipeLibraryView.swift */,
 				94514113B5418A9108E161B0 /* ReviewView.swift */,
 				73FFA52C6877C70560151914 /* RootView.swift */,
+				E48E434BEE39A52AF6BEC478 /* SimilarRecipePreviewSheet.swift */,
 				EB8FAA7CA825A14FBDE26A6C /* TagInputView.swift */,
 			);
 			path = Views;
@@ -337,6 +342,7 @@
 				895AC2D9349872A304AFDCB8 /* URLRouter.swift */,
 				AB6927B3D6996D01FA9163A5 /* VideoMetadataFetcher.swift */,
 				A4E0C3985F6D96FA13D91BBD /* WebPageFetcher.swift */,
+				DF90F98FC541EF3FA381CB38 /* WebRecipeSearcher.swift */,
 			);
 			path = Extraction;
 			sourceTree = "<group>";
@@ -482,6 +488,7 @@
 				7274E8EDC53759AD77E62D48 /* ReviewView.swift in Sources */,
 				F6069329545E157D44AB41CB /* RootView.swift in Sources */,
 				87CF41CD4480899D5D932520 /* SchemaOrgExtractor.swift in Sources */,
+				DA00F67E30D9541957FE96C0 /* SimilarRecipePreviewSheet.swift in Sources */,
 				FA932308D97292B1EB264831 /* SousChefApp.swift in Sources */,
 				F5304E687B7BC179FB049DFC /* SubstitutionLibrary.swift in Sources */,
 				2B2EDDF3A98BBEF7CB8134E6 /* TagInputView.swift in Sources */,
@@ -491,6 +498,7 @@
 				69E483A482520AFBBD85568C /* URLRouter.swift in Sources */,
 				21A36AEB84A1CF6CF499FD33 /* VideoMetadataFetcher.swift in Sources */,
 				E2B7C61A45B1C3E86CF6B4CF /* WebPageFetcher.swift in Sources */,
+				2FDC295AC4E64BC6DBC9C4EE /* WebRecipeSearcher.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -106,6 +106,23 @@ struct SchemaOrgExtractor {
         let textForAppliances = result.ingredients.map { $0.text } + result.steps.map { $0.text }
         result.appliances = ApplianceDetector.detect(in: textForAppliances)
 
+        // Image / thumbnail — can be a String URL, ImageObject dict, or array of either
+        if let imageVal = dict["image"] {
+            if let imageStr = imageVal as? String {
+                result.thumbnailURL = imageStr
+            } else if let imageObj = imageVal as? [String: Any] {
+                result.thumbnailURL = imageObj["url"] as? String
+            } else if let imageArr = imageVal as? [Any] {
+                // Array of strings or ImageObject dicts
+                for item in imageArr {
+                    if let str = item as? String { result.thumbnailURL = str; break }
+                    if let obj = item as? [String: Any], let url = obj["url"] as? String {
+                        result.thumbnailURL = url; break
+                    }
+                }
+            }
+        }
+
         // Confidence scoring
         result.confidence = computeConfidence(result)
         return result
