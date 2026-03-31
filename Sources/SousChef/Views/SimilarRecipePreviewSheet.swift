@@ -125,6 +125,19 @@ struct SimilarRecipePreviewSheet: View {
                         .foregroundStyle(Color.scTextSecondary)
                 }
             }
+            // Recipe source link
+            if let pageURL = recipe.recipePageURL, let url = URL(string: pageURL) {
+                Link(destination: url) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.right.square")
+                        Text(url.host ?? pageURL)
+                            .lineLimit(1)
+                    }
+                    .font(.scCaption)
+                    .foregroundStyle(Color.scAccent)
+                }
+                .padding(.top, 2)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

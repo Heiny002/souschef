@@ -290,7 +290,9 @@ actor ExtractionPipeline {
 
     private func extractFromWebPage(urlString: String) async throws -> ExtractionResult {
         let html = try await fetcher.fetch(urlString: urlString)
-        return extractFromHTML(html: html)
+        var result = extractFromHTML(html: html)
+        result.recipePageURL = urlString
+        return result
     }
 
     /// Run the extraction chain on pre-fetched HTML (useful for testing).

@@ -15,6 +15,7 @@ struct ExtractionResult: Sendable {
     var extractionMethod: String
     var isSubstitute: Bool = false       // true when result came from web search fallback
     var originalSourceURL: String?       // the video URL the user originally submitted
+    var recipePageURL: String?           // the web page this recipe was extracted from
     var thumbnailURL: String?            // recipe photo URL (from Schema.org image field or oEmbed)
     var alternatives: [ExtractionResult] = []  // similar recipes collected when primary extraction fails
     var captionPreview: String?          // snippet of searched text shown in failure UI
