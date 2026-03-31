@@ -135,12 +135,13 @@ actor ExtractionPipeline {
         let validator = TranscriptLLMValidator(apiKey: apiKey)
         result = (try? await validator.validate(transcript: fullText, partial: result)) ?? result
 
-        // Step 5: SC-076 — Two-stage web search (specific first, then similar as fallback)
+        // Step 5: SC-076 — Three-stage web search (two specific attempts, then collect similar)
         if !result.isViable || result.confidence < ConfidenceThreshold.reject {
             let keywords = CaptionAnalyzer.extractKeywords(from: allCaptionText, using: FoodDictionary.shared)
             let authorName = metadata?.authorName ?? authorHandle(from: metadata?.authorURL)
 
-            // Stage A: Targeted search — try to find THE specific recipe from this creator
+            // Stage A1: Creator-targeted search — "[@handle] dishname recipe"
+            // Best chance of finding the exact recipe the creator posted about.
             let specificQuery = buildSpecificQuery(
                 authorName: authorName,
                 title: result.title ?? titleHint,
@@ -160,13 +161,31 @@ actor ExtractionPipeline {
                 }
             }
 
-            // Stage B: Collect up to 2 similar recipes as alternatives for the failure UI
+            // Stage A2: General dish search — "dishname recipe" (no creator constraint)
+            // Second attempt to find THE specific recipe before accepting defeat.
+            // Reuse these results for Stage B to avoid a redundant search call.
             let genericQuery = buildGenericQuery(title: result.title ?? titleHint, keywords: keywords)
+            var generalSearchResults: [WebRecipeSearcher.SearchResult] = []
             if let query = genericQuery {
+                progress?("Searching more broadly…")
+                generalSearchResults = await WebRecipeSearcher.search(query: query)
+                for candidate in generalSearchResults {
+                    if let webResult = try? await extractFromWebPage(urlString: candidate.url),
+                       webResult.isViable {
+                        var substituteResult = webResult
+                        substituteResult.isSubstitute = true
+                        substituteResult.originalSourceURL = urlString
+                        return substituteResult
+                    }
+                }
+            }
+
+            // Stage B: Collect up to 2 similar recipes from general results for the failure UI.
+            // Re-extract from the same candidates (already fetched above) — no extra network call.
+            if !generalSearchResults.isEmpty {
                 progress?("Finding similar recipes…")
-                let searchResults = await WebRecipeSearcher.search(query: query)
                 var alternatives: [ExtractionResult] = []
-                for candidate in searchResults {
+                for candidate in generalSearchResults {
                     if let webResult = try? await extractFromWebPage(urlString: candidate.url),
                        webResult.isViable {
                         var alt = webResult
