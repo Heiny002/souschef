@@ -135,15 +135,53 @@ actor ExtractionPipeline {
         let validator = TranscriptLLMValidator(apiKey: apiKey)
         result = (try? await validator.validate(transcript: fullText, partial: result)) ?? result
 
-        // Step 5: SC-076 — Three-stage web search (two specific attempts, then collect similar)
+        // Step 5: SC-076 — Web search chain: profile discovery → targeted → general → collect similar
         if !result.isViable || result.confidence < ConfidenceThreshold.reject {
             let keywords = CaptionAnalyzer.extractKeywords(from: allCaptionText, using: FoodDictionary.shared)
-            let authorName = metadata?.authorName ?? authorHandle(from: metadata?.authorURL)
+            let rawHandle = authorHandle(from: metadata?.authorURL)
+            // searchAuthorName starts as handle (e.g. "@kalememaybe"), may be upgraded to
+            // real name (e.g. "Carina Wolff") by Stage 0 profile discovery below.
+            var searchAuthorName = metadata?.authorName ?? rawHandle
 
-            // Stage A1: Creator-targeted search — "[@handle] dishname recipe"
+            // Stage 0: Creator profile discovery via web search for the handle.
+            // Finds Linktree/aggregator pages and blogs when direct profile access is login-gated.
+            // Navigates aggregators for keyword-matched recipe links, extracts real name.
+            if let handle = rawHandle?.trimmingCharacters(in: CharacterSet(charactersIn: "@")),
+               !handle.isEmpty, !keywords.isEmpty {
+                progress?("Looking up creator profile…")
+                let profile = await CreatorProfileSearcher.discover(handle: handle, keywords: keywords)
+
+                // 0a: Recipe URLs scored from aggregator pages (e.g. Linktree link for this dish)
+                for recipeURL in profile.recipePageURLs {
+                    if let webResult = try? await extractFromWebPage(urlString: recipeURL),
+                       webResult.isViable {
+                        var r = webResult
+                        r.originalSourceURL = urlString
+                        return r  // found the creator's actual recipe — not a substitute
+                    }
+                }
+
+                // 0b: BlogRecipeSearch on discovered blog/substack URLs
+                for blogURL in profile.blogURLs {
+                    if let recipePageURL = await BlogRecipeSearch.search(blogURL: blogURL, keywords: keywords),
+                       let webResult = try? await extractFromWebPage(urlString: recipePageURL),
+                       webResult.isViable {
+                        var r = webResult
+                        r.originalSourceURL = urlString
+                        return r  // found the creator's actual recipe
+                    }
+                }
+
+                // 0c: Upgrade A1 query with real name if discovered
+                if let realName = profile.realName {
+                    searchAuthorName = realName
+                }
+            }
+
+            // Stage A1: Creator-targeted search — "[@handle / Real Name] dishname recipe"
             // Best chance of finding the exact recipe the creator posted about.
             let specificQuery = buildSpecificQuery(
-                authorName: authorName,
+                authorName: searchAuthorName,
                 title: result.title ?? titleHint,
                 keywords: keywords
             )
@@ -200,7 +238,7 @@ actor ExtractionPipeline {
 
             // Annotate the failed result for the failure UI
             result.captionPreview = allCaptionText.isEmpty ? nil : String(allCaptionText.prefix(200))
-            result.authorHint = authorName
+            result.authorHint = searchAuthorName
             result.thumbnailURL = metadata?.thumbnailURL
         }
 

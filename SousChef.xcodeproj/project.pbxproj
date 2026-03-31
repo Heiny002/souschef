@@ -27,6 +27,7 @@
 		4D6D22F7062D0D69047BD0B4 /* TranscriptFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C51C8FF4F069912D4A1F95C /* TranscriptFetcher.swift */; };
 		53F6776273EA863FF9B65B9D /* ExtractionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 443FFA2EEDD23F93CCAC6408 /* ExtractionResult.swift */; };
 		5AAA4D33D6D64498DFEA7FE4 /* RecipeValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A84D65E08565F7B6F18BB383 /* RecipeValidator.swift */; };
+		5B9C35571B118D8386AD4447 /* CreatorProfileSearcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C538E0B7BE7465A4B0252561 /* CreatorProfileSearcher.swift */; };
 		5D1C602B043AD370184C67AE /* IngredientParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 644C35F47DEA2B69B329D45D /* IngredientParser.swift */; };
 		6251B9CBA7B4C26920D74612 /* DinerProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC95E88D6EEEC8BD4D8AAFD /* DinerProfile.swift */; };
 		69E483A482520AFBBD85568C /* URLRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 895AC2D9349872A304AFDCB8 /* URLRouter.swift */; };
@@ -123,6 +124,7 @@
 		AB6927B3D6996D01FA9163A5 /* VideoMetadataFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoMetadataFetcher.swift; sourceTree = "<group>"; };
 		BBD4C75A2449648C9F438129 /* ISO8601DurationParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ISO8601DurationParser.swift; sourceTree = "<group>"; };
 		BD1FE7C3542DE80926979549 /* SousChef.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SousChef.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C538E0B7BE7465A4B0252561 /* CreatorProfileSearcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatorProfileSearcher.swift; sourceTree = "<group>"; };
 		C56C035BCE2DC97ABF806569 /* DietDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DietDefinition.swift; sourceTree = "<group>"; };
 		CE44BBBFC6D8074C36714074 /* RecipeLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeLibraryView.swift; sourceTree = "<group>"; };
 		CFC60516D7FE8F9BE2961986 /* Recipe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recipe.swift; sourceTree = "<group>"; };
@@ -325,6 +327,7 @@
 				7F7FA7EC42E315D9108E0DAA /* BioLinkResolver.swift */,
 				8E9B804037E381B1875A02E5 /* BlogRecipeSearch.swift */,
 				124A4D2FF0344B802F56263E /* CaptionAnalyzer.swift */,
+				C538E0B7BE7465A4B0252561 /* CreatorProfileSearcher.swift */,
 				324369F23CEEC663CA1EA5A0 /* ExtractionPipeline.swift */,
 				443FFA2EEDD23F93CCAC6408 /* ExtractionResult.swift */,
 				9B900B6CCB0A116CB1F75B38 /* FoodDictionary.swift */,
@@ -465,6 +468,7 @@
 				F3DFF5983E8A3920FCD815EB /* CookModeView.swift in Sources */,
 				FF7F4CC647BE268DE8447CDC /* CookTimerManager.swift in Sources */,
 				78D5C4F0DD6AD2A9699D1F3A /* CookVoiceController.swift in Sources */,
+				5B9C35571B118D8386AD4447 /* CreatorProfileSearcher.swift in Sources */,
 				AEA99155ABF7813A92A3D68B /* DesignSystem.swift in Sources */,
 				862DAB0B881F48164C3C7288 /* DietDefinition.swift in Sources */,
 				6251B9CBA7B4C26920D74612 /* DinerProfile.swift in Sources */,
