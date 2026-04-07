@@ -46,7 +46,11 @@ actor BioLinkResolver {
         }
 
         // Step 3: Fetch author profile page → extract bio link
-        if let profileURL = authorURL, !profileURL.isEmpty {
+        // When yt-dlp returns an Instagram/TikTok profile URL via serverBlogURL (uploader_url),
+        // and authorURL is nil (HTML scraping failed), use the server-provided profile URL.
+        let effectiveProfileURL = authorURL
+            ?? serverBlogURL.flatMap { isSocialMediaURL($0) ? $0 : nil }
+        if let profileURL = effectiveProfileURL, !profileURL.isEmpty {
             if let bioLink = await extractBioLink(from: profileURL) {
                 // Check if bio link is a link aggregator
                 if isAggregator(bioLink) {
@@ -70,6 +74,23 @@ actor BioLinkResolver {
 
     private func extractBioLink(from profileURL: String) async -> String? {
         guard let html = await rateLimitedFetch(urlString: profileURL) else { return nil }
+
+        // Instagram always wraps external bio links through l.instagram.com/?u=encodedURL
+        // This is the most reliable extraction path — works even on login-wall pages
+        let redirectPattern = #"l\.instagram\.com/\?u=([^&\"'\s>]+)"#
+        if let re = try? NSRegularExpression(pattern: redirectPattern, options: .caseInsensitive) {
+            let nsRange = NSRange(html.startIndex..., in: html)
+            for match in re.matches(in: html, options: [], range: nsRange) {
+                guard let r = Range(match.range(at: 1), in: html) else { continue }
+                let encoded = String(html[r])
+                if let decoded = encoded.removingPercentEncoding,
+                   let url = URL(string: decoded),
+                   let host = url.host?.lowercased(),
+                   !isSocialMediaHost(host) {
+                    return decoded
+                }
+            }
+        }
 
         do {
             let doc = try SwiftSoup.parse(html)
@@ -202,6 +223,7 @@ actor BioLinkResolver {
         "linkpop.com", "tap.bio", "link.bio", "campsite.bio",
         "hoo.be", "snipfeed.co", "lnk.bio", "withkoji.com",
         "linkin.bio", "allmylinks.com", "bio.link",
+        "provecho.bio", "provecho.co",
     ]
 
     private func isSocialMediaURL(_ urlString: String) -> Bool {

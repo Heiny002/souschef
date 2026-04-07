@@ -1,0 +1,189 @@
+[
+  {
+    "id": "vegetarian",
+    "name": "Vegetarian",
+    "restrictedCategories": ["meat", "poultry", "fish", "seafood", "shellfish"],
+    "restrictedIngredients": ["gelatin", "lard", "suet", "rennet"],
+    "hiddenRestrictions": ["worcestershire sauce", "caesar dressing", "some cheeses"],
+    "allowedCategories": ["dairy", "eggs", "vegetable", "fruit", "grain", "legume", "nut"],
+    "conditionalNotes": "Some vegetarians also avoid eggs and dairy (see Vegan).",
+    "isElimination": false,
+    "macroTargets": null
+  },
+  {
+    "id": "vegan",
+    "name": "Vegan",
+    "restrictedCategories": ["meat", "poultry", "fish", "seafood", "shellfish", "dairy", "dairy-adjacent"],
+    "restrictedIngredients": ["eggs", "egg", "honey", "gelatin", "lard", "suet", "rennet", "whey", "casein", "lactose", "beeswax", "shellac"],
+    "hiddenRestrictions": ["worcestershire sauce", "some wines", "some beers", "some sugars", "vitamin d3"],
+    "allowedCategories": ["vegetable", "fruit", "grain", "legume", "nut", "oil"],
+    "conditionalNotes": "Many processed foods contain hidden animal products.",
+    "isElimination": false,
+    "macroTargets": null
+  },
+  {
+    "id": "pescatarian",
+    "name": "Pescatarian",
+    "restrictedCategories": ["meat", "poultry"],
+    "restrictedIngredients": ["lard", "suet", "bacon", "ham", "prosciutto", "pancetta"],
+    "hiddenRestrictions": ["meat-based stocks", "some soups"],
+    "allowedCategories": ["fish", "seafood", "shellfish", "dairy", "eggs", "vegetable", "fruit", "grain"],
+    "conditionalNotes": "",
+    "isElimination": false,
+    "macroTargets": null
+  },
+  {
+    "id": "keto",
+    "name": "Keto",
+    "restrictedCategories": ["grain", "starchy vegetable", "sweetener", "fruit", "legume"],
+    "restrictedIngredients": ["sugar", "brown sugar", "powdered sugar", "honey", "maple syrup", "corn syrup", "flour", "bread", "pasta", "rice", "oats", "potato", "sweet potato", "corn", "banana", "apple", "orange", "grapes", "mango", "beans"],
+    "hiddenRestrictions": ["sauces with added sugar", "marinades", "salad dressings", "low fat products"],
+    "allowedCategories": ["meat", "fish", "dairy", "fat", "oil", "leafy green", "non-starchy vegetable"],
+    "conditionalNotes": "Target: <20–50g net carbs per day.",
+    "isElimination": true,
+    "macroTargets": {"maxCarbsGrams": 25, "minFatPercent": 70, "minProteinPercent": 20}
+  },
+  {
+    "id": "paleo",
+    "name": "Paleo",
+    "restrictedCategories": ["grain", "legume", "dairy"],
+    "restrictedIngredients": ["flour", "bread", "pasta", "rice", "oats", "corn", "soy sauce", "tofu", "lentils", "peanut", "milk", "butter", "cheese", "yogurt", "peas", "chickpeas", "black beans", "kidney beans", "white beans", "refined sugar", "corn syrup"],
+    "hiddenRestrictions": ["canola oil", "vegetable oil", "industrial seed oils", "artificial sweeteners"],
+    "allowedCategories": ["meat", "fish", "seafood", "eggs", "vegetable", "fruit", "nut"],
+    "conditionalNotes": "Focuses on whole, unprocessed foods. Some versions allow white rice and white potatoes.",
+    "isElimination": true,
+    "macroTargets": null
+  },
+  {
+    "id": "whole30",
+    "name": "Whole30",
+    "restrictedCategories": ["grain", "legume", "dairy", "sweetener", "alcohol"],
+    "restrictedIngredients": ["sugar", "honey", "maple syrup", "agave", "flour", "bread", "pasta", "rice", "oats", "corn", "milk", "cheese", "yogurt", "butter", "cream", "peanut", "soy sauce", "tofu", "lentils", "chickpeas", "black beans", "wine", "beer", "corn starch", "carrageenan", "msg", "sulfites"],
+    "hiddenRestrictions": ["most condiments", "protein powders", "kombucha with alcohol"],
+    "allowedCategories": ["meat", "fish", "seafood", "eggs", "vegetable", "fruit", "nut", "oil"],
+    "conditionalNotes": "Strict 30-day elimination. Ghee and clarified butter allowed. Compliant hot sauce allowed.",
+    "isElimination": true,
+    "macroTargets": null
+  },
+  {
+    "id": "gluten-free",
+    "name": "Gluten-Free",
+    "restrictedCategories": [],
+    "restrictedIngredients": ["flour", "bread", "pasta", "oats", "barley", "rye", "spelt", "wheat", "farro", "kamut", "semolina", "durum", "einkorn", "emmer"],
+    "hiddenRestrictions": ["soy sauce", "malt vinegar", "beer", "some oats", "some sauces", "some condiments", "imitation crab", "some medications"],
+    "allowedCategories": ["meat", "fish", "dairy", "eggs", "vegetable", "fruit", "legume", "nut"],
+    "conditionalNotes": "Oats are naturally gluten-free but often cross-contaminated. Use certified GF oats.",
+    "isElimination": true,
+    "macroTargets": null
+  },
+  {
+    "id": "dairy-free",
+    "name": "Dairy-Free",
+    "restrictedCategories": ["dairy"],
+    "restrictedIngredients": ["milk", "butter", "cheese", "cream", "yogurt", "heavy cream", "cream cheese", "sour cream", "whey", "casein", "lactose", "ghee"],
+    "hiddenRestrictions": ["some margarines", "some chocolate", "some processed meats", "non-dairy creamers often contain casein"],
+    "allowedCategories": ["meat", "fish", "eggs", "vegetable", "fruit", "grain", "legume", "nut"],
+    "conditionalNotes": "Coconut milk, almond milk, oat milk are allowed.",
+    "isElimination": true,
+    "macroTargets": null
+  },
+  {
+    "id": "low-fodmap",
+    "name": "Low-FODMAP",
+    "restrictedCategories": [],
+    "restrictedIngredients": ["garlic", "onion", "shallot", "wheat", "apple", "pear", "honey", "milk", "cream", "soft cheese", "yogurt", "chickpeas", "lentils", "kidney beans", "black beans", "cauliflower", "mushroom", "avocado", "mango"],
+    "hiddenRestrictions": ["garlic-infused oil is ok", "lactose-free dairy is ok", "canned chickpeas (rinsed) may be ok in small amounts"],
+    "allowedCategories": ["meat", "fish", "eggs", "most vegetables", "most fruits"],
+    "conditionalNotes": "Garlic and onion are the top triggers. Garlic-infused oil (oil only) is low-FODMAP.",
+    "isElimination": true,
+    "macroTargets": null
+  },
+  {
+    "id": "mediterranean",
+    "name": "Mediterranean",
+    "restrictedCategories": [],
+    "restrictedIngredients": ["processed meat", "soda", "refined sugar", "white bread", "lard"],
+    "hiddenRestrictions": ["ultra-processed foods", "refined carbs"],
+    "allowedCategories": ["fish", "seafood", "vegetable", "fruit", "grain", "legume", "nut", "olive oil", "dairy"],
+    "conditionalNotes": "Emphasis on olive oil, vegetables, fish. Red meat in moderation. Moderate red wine optional.",
+    "isElimination": false,
+    "macroTargets": null
+  },
+  {
+    "id": "halal",
+    "name": "Halal",
+    "restrictedCategories": ["alcohol"],
+    "restrictedIngredients": ["pork", "bacon", "ham", "prosciutto", "lard", "gelatin", "wine", "beer", "vanilla extract", "mirin"],
+    "hiddenRestrictions": ["some gelatin", "some emulsifiers (E471)", "some food colorings", "vanilla extract (alcohol)", "non-halal-certified meat"],
+    "allowedCategories": ["halal-certified meat", "fish", "vegetables", "fruits", "grains", "dairy", "eggs"],
+    "conditionalNotes": "Meat must be slaughtered according to Islamic law. Vanilla extract contains alcohol — use vanilla bean paste.",
+    "isElimination": true,
+    "macroTargets": null
+  },
+  {
+    "id": "kosher",
+    "name": "Kosher",
+    "restrictedCategories": [],
+    "restrictedIngredients": ["pork", "shrimp", "lobster", "crab", "shellfish", "rabbit", "oyster"],
+    "hiddenRestrictions": ["cannot mix meat and dairy in same meal", "gelatin from non-kosher sources", "certain insects in produce"],
+    "allowedCategories": ["kosher-certified meat", "kosher fish (fins and scales)", "vegetables", "fruits", "grains"],
+    "conditionalNotes": "Meat and dairy may not be combined. Separate utensils required. Fish without fins/scales not permitted.",
+    "isElimination": true,
+    "macroTargets": null
+  },
+  {
+    "id": "nut-free",
+    "name": "Nut-Free",
+    "restrictedCategories": ["nut"],
+    "restrictedIngredients": ["almond", "walnut", "cashew", "pecan", "pistachio", "macadamia", "hazelnut", "brazil nut", "pine nut", "almond flour", "almond milk", "peanut", "peanut butter"],
+    "hiddenRestrictions": ["nut oils", "marzipan", "praline", "some pesto (pine nuts)", "some granolas", "trail mix"],
+    "allowedCategories": ["meat", "fish", "dairy", "eggs", "vegetable", "fruit", "grain", "legume", "seed"],
+    "conditionalNotes": "Peanuts are technically legumes but often included in nut-free restrictions due to cross-contamination.",
+    "isElimination": true,
+    "macroTargets": null
+  },
+  {
+    "id": "low-sodium",
+    "name": "Low-Sodium",
+    "restrictedCategories": [],
+    "restrictedIngredients": ["soy sauce", "fish sauce", "oyster sauce", "hoisin sauce", "worcestershire sauce", "miso", "anchovies", "capers", "olives", "pickles"],
+    "hiddenRestrictions": ["canned goods with added salt", "processed meats", "deli meat", "cheese", "bread", "condiments"],
+    "allowedCategories": ["fresh meat", "fresh fish", "fresh vegetables", "fresh fruits"],
+    "conditionalNotes": "Target: <1500mg sodium/day. Use low-sodium versions of soy sauce, broth, and canned goods.",
+    "isElimination": false,
+    "macroTargets": {"maxSodiumMg": 1500}
+  },
+  {
+    "id": "diabetic-friendly",
+    "name": "Diabetic-Friendly",
+    "restrictedCategories": ["sweetener"],
+    "restrictedIngredients": ["sugar", "brown sugar", "powdered sugar", "honey", "maple syrup", "corn syrup", "agave", "white bread", "white rice", "white pasta"],
+    "hiddenRestrictions": ["fruit juice", "dried fruit", "sweetened condiments", "some low-fat products"],
+    "allowedCategories": ["lean meat", "fish", "vegetables", "legume", "whole grain", "dairy"],
+    "conditionalNotes": "Focus on low glycemic index foods. Limit refined carbohydrates.",
+    "isElimination": false,
+    "macroTargets": {"maxCarbsGrams": 45, "targetFiberGrams": 25}
+  },
+  {
+    "id": "anti-inflammatory",
+    "name": "Anti-Inflammatory",
+    "restrictedCategories": [],
+    "restrictedIngredients": ["refined sugar", "corn syrup", "white flour", "vegetable oil", "canola oil", "corn oil", "soybean oil", "margarine", "processed meat", "refined grain"],
+    "hiddenRestrictions": ["omega-6 heavy oils", "trans fats", "artificial additives"],
+    "allowedCategories": ["fatty fish", "olive oil", "vegetables", "fruit", "berry", "nut", "whole grain", "legume"],
+    "conditionalNotes": "Turmeric, ginger, garlic, and berries are especially beneficial.",
+    "isElimination": false,
+    "macroTargets": null
+  },
+  {
+    "id": "dash",
+    "name": "DASH",
+    "restrictedCategories": [],
+    "restrictedIngredients": ["salt", "soy sauce", "processed meat", "full fat dairy", "refined sugar", "saturated fat"],
+    "hiddenRestrictions": ["sodium in canned/processed foods", "salt in restaurant food"],
+    "allowedCategories": ["vegetable", "fruit", "whole grain", "lean meat", "fish", "legume", "low-fat dairy", "nut"],
+    "conditionalNotes": "DASH = Dietary Approaches to Stop Hypertension. Low sodium, high potassium/magnesium.",
+    "isElimination": false,
+    "macroTargets": {"maxSodiumMg": 1500, "targetFiberGrams": 30}
+  }
+]

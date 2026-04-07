@@ -64,36 +64,64 @@ actor VideoMetadataFetcher {
             throw VideoMetadataError.malformedResponse
         }
 
-        let caption = extractOGContent(from: html, property: "og:description")
-        let title   = extractOGContent(from: html, property: "og:title")
-        let thumb   = extractOGContent(from: html, property: "og:image")
+        let ogDescription = extractOGContent(from: html, property: "og:description")
+        let ogTitle       = extractOGContent(from: html, property: "og:title")
+        let ogURL         = extractOGContent(from: html, property: "og:url")
+        let thumb         = extractOGContent(from: html, property: "og:image")
 
-        guard caption != nil || title != nil else { throw VideoMetadataError.malformedResponse }
+        guard ogDescription != nil || ogTitle != nil else { throw VideoMetadataError.malformedResponse }
 
-        // Try to extract author profile URL from og:url → derive profile from reel path
+        // Extract real name from og:title — format: "Real Name on Instagram: 'caption...'"
+        // The part before " on Instagram:" is the creator's display name.
+        var realName: String? = nil
+        if let t = ogTitle {
+            let namePattern = #"^(.+?)\s+on\s+Instagram"#
+            if let re = try? NSRegularExpression(pattern: namePattern, options: .caseInsensitive),
+               let match = re.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)),
+               let range = Range(match.range(at: 1), in: t) {
+                realName = String(t[range]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+
+        // Extract handle (username) for the author profile URL.
+        // Priority:
+        //   1. og:url path — most reliable: instagram.com/{username}/reel/...
+        //   2. Scan HTML for instagram.com/{username}/ occurrences
+        let reserved = Set(["reel", "p", "explore", "accounts", "login",
+                            "direct", "stories", "tv", "ar", "static", "api", "graphql",
+                            "rsrc", "rsrc.php"])
         let authorURL: String? = {
-            guard let ogURL = extractOGContent(from: html, property: "og:url"),
-                  let parsed = URL(string: ogURL),
-                  parsed.host?.contains("instagram.com") == true else { return nil }
-            // Reel URL format: /reel/XXX/ — creator profile is in page HTML elsewhere
-            // Try to find profile link in the HTML
-            let profilePattern = #"instagram\.com/([A-Za-z0-9_.]+)/?"#
-            if let re = try? NSRegularExpression(pattern: profilePattern),
-               let match = re.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-               let range = Range(match.range(at: 1), in: html) {
-                let username = String(html[range])
-                if username != "reel" && username != "p" && username != "explore" {
-                    return "https://www.instagram.com/\(username)/"
+            // Method 1: og:url contains the canonical URL with the real username in path
+            if let pageURL = ogURL, let url = URL(string: pageURL) {
+                let parts = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
+                if let handle = parts.first, handle.count >= 2, !reserved.contains(handle.lowercased()) {
+                    return "https://www.instagram.com/\(handle)/"
+                }
+            }
+            // Method 2: scan ALL instagram.com/username/ occurrences as fallback
+            let profilePattern = #"instagram\.com/([A-Za-z0-9_.]{3,30})/"#
+            if let re = try? NSRegularExpression(pattern: profilePattern) {
+                let nsRange = NSRange(html.startIndex..., in: html)
+                for match in re.matches(in: html, options: [], range: nsRange) {
+                    guard let r = Range(match.range(at: 1), in: html) else { continue }
+                    let candidate = String(html[r])
+                    if !reserved.contains(candidate.lowercased()) {
+                        return "https://www.instagram.com/\(candidate)/"
+                    }
                 }
             }
             return nil
         }()
 
+        // Caption: prefer og:description (has handle + like count + actual caption text)
+        // og:title also contains part of the caption, use as fallback
+        let caption = ogDescription ?? ogTitle
+
         return VideoMetadata(
-            title: title,
-            authorName: nil,
+            title: ogTitle,
+            authorName: realName,
             authorURL: authorURL,
-            caption: caption ?? title,
+            caption: caption,
             thumbnailURL: thumb
         )
     }

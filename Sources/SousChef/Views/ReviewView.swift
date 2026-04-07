@@ -40,6 +40,9 @@ struct ReviewView: View {
                 Color.scBackground.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: Spacing.lg) {
+                        if extractionResult.isSubstitute {
+                            substituteBanner
+                        }
                         confidenceHeader
                         titleSection
                         yieldSection
@@ -213,6 +216,29 @@ struct ReviewView: View {
 
     // MARK: - Helpers
 
+    private var substituteBanner: some View {
+        HStack(spacing: Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 20))
+                .foregroundStyle(Color.scAccent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Similar Recipe")
+                    .font(.scLabel)
+                    .foregroundStyle(Color.scTextPrimary)
+                Text("We couldn't find the exact recipe from this video. Here's a similar one we found online.")
+                    .font(.scCaption)
+                    .foregroundStyle(Color.scTextSecondary)
+            }
+        }
+        .padding(Spacing.md)
+        .background(Color.scAccent.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.scAccent.opacity(0.3), lineWidth: 1)
+        )
+    }
+
     private var confidenceColor: Color {
         switch extractionResult.confidence {
         case 0.7...: return .green
@@ -270,7 +296,7 @@ struct ReviewView: View {
         let recipe = Recipe(
             title: title.trimmingCharacters(in: .whitespaces),
             sourceURL: extractionResult.ingredients.isEmpty ? nil : nil,
-            sourceType: "web",
+            sourceType: extractionResult.isSubstitute ? "web-search-substitute" : "web",
             extractionConfidence: extractionResult.confidence,
             extractionMethod: extractionResult.extractionMethod
         )

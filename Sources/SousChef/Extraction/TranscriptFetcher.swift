@@ -22,7 +22,7 @@ actor TranscriptFetcher {
     private let session: URLSession
 
     /// Shared instance using the default server endpoint.
-    static let shared = TranscriptFetcher(serverURL: "https://api.souschef.app")
+    static let shared = TranscriptFetcher(serverURL: "http://localhost:8000")
 
     init(serverURL: String) {
         self.serverURL = serverURL

@@ -24,12 +24,17 @@ enum BlogRecipeSearch {
             return result
         }
 
-        // Strategy 2: WordPress HTML search page
+        // Strategy 2: Substack Archive API — /api/v1/archive (Substack doesn't have WP endpoints)
+        if let result = await searchSubstackAPI(baseURL: baseURL, keywords: keywords, fetcher: fetcher) {
+            return result
+        }
+
+        // Strategy 3: WordPress HTML search page
         if let result = await searchWordPressHTML(baseURL: baseURL, query: query, fetcher: fetcher) {
             return result
         }
 
-        // Strategy 3: Sitemap URL slug matching
+        // Strategy 4: Sitemap URL slug matching
         if let result = await searchSitemap(baseURL: baseURL, keywords: keywords, fetcher: fetcher) {
             return result
         }
@@ -73,7 +78,47 @@ enum BlogRecipeSearch {
         return nil
     }
 
-    // MARK: - Strategy 2: WordPress HTML Search
+    // MARK: - Strategy 2: Substack Archive API
+
+    /// GET {baseURL}/api/v1/archive?sort=new&limit=50
+    /// Substack returns a JSON array of post objects with canonical_url and title.
+    private static func searchSubstackAPI(
+        baseURL: String, keywords: [String], fetcher: WebPageFetcher
+    ) async -> String? {
+        let endpoint = "\(baseURL)/api/v1/archive?sort=new&limit=50"
+        guard let jsonString = try? await fetcher.fetch(urlString: endpoint) else { return nil }
+        guard let data = jsonString.data(using: .utf8),
+              let posts = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+              !posts.isEmpty else { return nil }
+
+        var best: (url: String, score: Int) = ("", 0)
+
+        for post in posts {
+            // Substack post objects have canonical_url and title
+            guard let canonicalURL = post["canonical_url"] as? String else { continue }
+            let title = (post["title"] as? String ?? "").lowercased()
+            let slug  = URL(string: canonicalURL)?.path.lowercased() ?? ""
+
+            let score = keywords.reduce(0) { count, keyword in
+                let kw = keyword.lowercased()
+                let inTitle = title.contains(kw) ? 1 : 0
+                let inSlug  = slug.contains(kw) ? 1 : 0
+                return count + inTitle + inSlug
+            }
+
+            if score > best.score {
+                best = (url: canonicalURL, score: score)
+            }
+        }
+
+        let threshold = min(2, keywords.count)
+        if best.score >= threshold { return best.url }
+
+        // No keyword match — not a Substack or search returned irrelevant posts
+        return nil
+    }
+
+    // MARK: - Strategy 3: WordPress HTML Search
 
     /// GET {baseURL}/?s={query} — parse HTML for recipe links.
     private static func searchWordPressHTML(
@@ -138,7 +183,27 @@ enum BlogRecipeSearch {
         ]
 
         for sitemapURL in sitemapURLs {
-            guard let xml = try? await fetcher.fetch(urlString: sitemapURL) else { continue }
+            guard var xml = try? await fetcher.fetch(urlString: sitemapURL) else { continue }
+
+            // Sitemap index: follow child sitemaps (one level deep)
+            if xml.contains("<sitemapindex") {
+                let locPattern = #"<loc>\s*(https?://[^\s<]+)\s*</loc>"#
+                if let re = try? NSRegularExpression(pattern: locPattern) {
+                    let allMatches = re.matches(in: xml, range: NSRange(xml.startIndex..., in: xml))
+                    // Prefer post-specific child sitemaps; fall back to first child
+                    let childURLs = allMatches.compactMap { m -> String? in
+                        guard let r = Range(m.range(at: 1), in: xml) else { return nil }
+                        return String(xml[r])
+                    }
+                    let preferred = childURLs.first { $0.contains("post") || $0.contains("recipe") }
+                        ?? childURLs.first
+                    if let childURL = preferred,
+                       let childXML = try? await fetcher.fetch(urlString: childURL) {
+                        xml = childXML
+                    }
+                }
+                if xml.contains("<sitemapindex") { continue }  // two levels deep — give up
+            }
 
             let urls = extractURLsFromSitemap(xml: xml, baseURL: baseURL)
             if urls.isEmpty { continue }
@@ -174,11 +239,8 @@ enum BlogRecipeSearch {
 
     // MARK: - Helpers
 
-    /// Extract <loc> URLs from a sitemap XML string.
+    /// Extract <loc> URLs from a flat sitemap XML string (not an index).
     private static func extractURLsFromSitemap(xml: String, baseURL: String) -> [String] {
-        // Check if this is a sitemap index (contains other sitemaps) — skip for now
-        if xml.contains("<sitemapindex") { return [] }
-
         var urls: [String] = []
         let pattern = #"<loc>\s*(.*?)\s*</loc>"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return [] }

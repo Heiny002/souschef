@@ -171,15 +171,26 @@ enum CaptionAnalyzer {
 
     /// Regex patterns that indicate "link in bio" or equivalent.
     private static let bioPatterns: [String] = [
+        // Explicit "bio" references
         #"link\s+in\s+(my\s+)?bio"#,
-        #"recipe\s+(is\s+)?(on|at)\s+my\s+(blog|website|site)"#,
         #"full\s+recipe\s+(on|in)\s+(my\s+)?bio"#,
         #"check\s+(my\s+)?bio"#,
         #"bio\s+for\s+(the\s+)?(full\s+)?recipe"#,
-        #"head\s+to\s+my\s+(blog|site|website)"#,
         #"recipe\s+link\s+in\s+(my\s+)?bio"#,
+
+        // "recipe(s) on my blog/website/site" — broad matching
+        #"recipes?\s+(is\s+)?(on|at)\s+(my\s+)?(blog|website|site)"#,
+        #"recipes?\s+on\s+(my\s+)?(blog|website|site|substack)"#,
+        #"head\s+to\s+my\s+(blog|site|website|substack)"#,
         #"get\s+the\s+(full\s+)?recipe\s+(on|at)\s+my"#,
         #"find\s+(the\s+)?(full\s+)?recipe\s+(on|at|in)"#,
+        #"(full\s+)?recipe\s+on\s+(the\s+)?(blog|website|site|substack|newsletter)"#,
+
+        // Newsletter / Substack / subscription signals (recipe is off-platform)
+        #"recipe.*went\s+out\s+on\s+(the\s+)?(newsletter|substack)"#,
+        #"recipe.*on\s+(my\s+)?(substack|newsletter)"#,
+        #"comment\s+\w+\s+to\s+get\s+(it|the\s+recipe)"#,
+        #"(subscribe|sign\s+up).*for\s+(the\s+)?(full\s+)?recipe"#,
     ]
 
     /// Social media hosts — URLs on these are NOT direct recipe links.
