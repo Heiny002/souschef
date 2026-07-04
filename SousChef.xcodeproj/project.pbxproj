@@ -44,6 +44,7 @@
 		932892887064C5311BA66EA0 /* substitutions.json in Resources */ = {isa = PBXBuildFile; fileRef = E5DB10C368AE7615A17FF506 /* substitutions.json */; };
 		98ABB4195E38B3EC80555C28 /* Lora-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1EE74A288B649F9B1FC783A7 /* Lora-SemiBold.ttf */; };
 		9E4BF5BA4F11E86F358EF5FF /* MicroStepSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7560654AFD354C4655DEEC21 /* MicroStepSplitter.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* IngredientAnnotator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E7F8091A2B3C4D5E6F7081 /* IngredientAnnotator.swift */; };
 		9F2F8AC90EA6C8D66CB562F6 /* IngredientParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA6B0D50C4629247D9083A41 /* IngredientParserTests.swift */; };
 		A023C66ED92EFC1D105BE252 /* LLMExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DC8E8C8944E55C1F03DC6D /* LLMExtractor.swift */; };
 		A71D307287F47F12A1420796 /* TranscriptLLMValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9ACA7716EC503F142D4F8B /* TranscriptLLMValidator.swift */; };
@@ -98,6 +99,7 @@
 		647EBB3413A511930A879E0C /* SousChef.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SousChef.entitlements; sourceTree = "<group>"; };
 		73FFA52C6877C70560151914 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		7560654AFD354C4655DEEC21 /* MicroStepSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroStepSplitter.swift; sourceTree = "<group>"; };
+		D6E7F8091A2B3C4D5E6F7081 /* IngredientAnnotator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngredientAnnotator.swift; sourceTree = "<group>"; };
 		778C9ACBA83889E0050DC223 /* SchemaOrgExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaOrgExtractor.swift; sourceTree = "<group>"; };
 		789EC44D856C77357E5E85A9 /* food-dictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "food-dictionary.json"; sourceTree = "<group>"; };
 		7C621B64319F944043650F8B /* SubstitutionLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubstitutionLibrary.swift; sourceTree = "<group>"; };
@@ -112,6 +114,7 @@
 		8E9B804037E381B1875A02E5 /* BlogRecipeSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlogRecipeSearch.swift; sourceTree = "<group>"; };
 		8F0BB97417274CF509B873CF /* SousChefTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SousChefTests.swift; sourceTree = "<group>"; };
 		9118C7EB140861CEAD591267 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		F1F2F3F4F5F6F7F8F9FAFBFC /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		94514113B5418A9108E161B0 /* ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewView.swift; sourceTree = "<group>"; };
 		978D73B0701FE2FF6C4C3CA7 /* CookTimerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookTimerManager.swift; sourceTree = "<group>"; };
 		9B900B6CCB0A116CB1F75B38 /* FoodDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodDictionary.swift; sourceTree = "<group>"; };
@@ -252,6 +255,7 @@
 				5EAA90B603817B72C3654470 /* Tests */,
 				033973AAE34323E8A14F0232 /* Frameworks */,
 				416AF47B2A9CEE0F7C3C4BB6 /* Products */,
+				F1F2F3F4F5F6F7F8F9FAFBFC /* Secrets.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -336,6 +340,7 @@
 				BBD4C75A2449648C9F438129 /* ISO8601DurationParser.swift */,
 				01DC8E8C8944E55C1F03DC6D /* LLMExtractor.swift */,
 				82FF8F6B3A0D2953DB61A55C /* MicrodataExtractor.swift */,
+				D6E7F8091A2B3C4D5E6F7081 /* IngredientAnnotator.swift */,
 				7560654AFD354C4655DEEC21 /* MicroStepSplitter.swift */,
 				A84D65E08565F7B6F18BB383 /* RecipeValidator.swift */,
 				778C9ACBA83889E0050DC223 /* SchemaOrgExtractor.swift */,
@@ -482,6 +487,7 @@
 				770096E2E77B7A0BE022D571 /* IngredientConverter.swift in Sources */,
 				5D1C602B043AD370184C67AE /* IngredientParser.swift in Sources */,
 				A023C66ED92EFC1D105BE252 /* LLMExtractor.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* IngredientAnnotator.swift in Sources */,
 				9E4BF5BA4F11E86F358EF5FF /* MicroStepSplitter.swift in Sources */,
 				F7063B91A1D41FC33CD2C05C /* MicrodataExtractor.swift in Sources */,
 				142E6680617222E6C17C3D2C /* OnboardingView.swift in Sources */,
@@ -610,6 +616,7 @@
 		};
 		76F737E482E98407EEAA2ECB /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F1F2F3F4F5F6F7F8F9FAFBFC /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/SousChef/SousChef.entitlements;
@@ -693,6 +700,7 @@
 		};
 		B630C36272BDD8D37EB77122 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F1F2F3F4F5F6F7F8F9FAFBFC /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/SousChef/SousChef.entitlements;

@@ -18,6 +18,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ANTHROPIC_API_KEY</key>
+	<string>$(ANTHROPIC_API_KEY)</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIApplicationSceneManifest</key>
@@ -37,9 +39,9 @@
 	<string>SousChef uses speech recognition to let you control cooking steps hands-free.</string>
 	<key>UIAppFonts</key>
 	<array>
-		<string>Fonts/Lora-Regular.ttf</string>
-		<string>Fonts/Lora-SemiBold.ttf</string>
-		<string>Fonts/Lora-Bold.ttf</string>
+		<string>Lora-Regular.ttf</string>
+		<string>Lora-SemiBold.ttf</string>
+		<string>Lora-Bold.ttf</string>
 	</array>
 </dict>
 </plist>

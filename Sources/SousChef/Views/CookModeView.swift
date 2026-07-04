@@ -72,14 +72,16 @@ struct CookModeView: View {
 
     private func buildMicroSteps() {
         let sorted = recipe.steps.sorted { $0.order < $1.order }
-        microSteps = sorted.flatMap { step -> [MicroStep] in
-            let parts = MicroStepSplitter.split(step.instruction)
-            return parts.map { instruction in
-                MicroStep(
-                    instruction: instruction,
-                    detectedTimer: TimerDetector.detect(in: instruction)
-                )
-            }
+        let rawInstructions = sorted.flatMap { MicroStepSplitter.split($0.instruction) }
+
+        // Annotate first-mention ingredients with their measurements
+        let annotated = IngredientAnnotator.annotate(rawInstructions, with: recipe.ingredients)
+
+        microSteps = annotated.map { instruction in
+            MicroStep(
+                instruction: instruction,
+                detectedTimer: TimerDetector.detect(in: instruction)
+            )
         }
     }
 

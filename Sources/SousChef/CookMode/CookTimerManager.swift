@@ -31,14 +31,14 @@ enum TimerDetector {
 
     // MARK: - Range "2-3 minutes" / "2 to 3 minutes"
 
-    private static let rangeRE = try! NSRegularExpression(
+    private static let rangeRE = try? NSRegularExpression(
         pattern: #"(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?|seconds?|secs?)"#,
         options: .caseInsensitive
     )
 
     private static func detectRange(in text: String) -> (label: String, seconds: Int)? {
         let ns = NSRange(text.startIndex..., in: text)
-        guard let m = rangeRE.firstMatch(in: text, range: ns),
+        guard let m = rangeRE?.firstMatch(in: text, range: ns),
               let r1 = Range(m.range(at: 1), in: text),
               let r2 = Range(m.range(at: 2), in: text),
               let r3 = Range(m.range(at: 3), in: text),
@@ -55,14 +55,14 @@ enum TimerDetector {
 
     // MARK: - Single "5 minutes"
 
-    private static let singleRE = try! NSRegularExpression(
+    private static let singleRE = try? NSRegularExpression(
         pattern: #"(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?|seconds?|secs?)"#,
         options: .caseInsensitive
     )
 
     private static func detectSingle(in text: String) -> (label: String, seconds: Int)? {
         let ns = NSRange(text.startIndex..., in: text)
-        guard let m = singleRE.firstMatch(in: text, range: ns),
+        guard let m = singleRE?.firstMatch(in: text, range: ns),
               let r1 = Range(m.range(at: 1), in: text),
               let r2 = Range(m.range(at: 2), in: text),
               let value = Double(text[r1]) else { return nil }

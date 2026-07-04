@@ -6,6 +6,7 @@ struct ImportView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var urlText = ""
+    @State private var clipboardHasURL = false
     @State private var phase: ImportPhase = .idle
     @State private var extractionResult: ExtractionResult?
     @State private var errorMessage: String?
@@ -28,6 +29,10 @@ struct ImportView: View {
             ZStack {
                 Color.scBackground.ignoresSafeArea()
                 VStack(spacing: Spacing.lg) {
+                    // .symbolRenderingMode(.monochrome) prevents CoreUI from building
+                    // animated multi-layer keyframe paths for symbols like wand.and.sparkles
+                    // and sparkle.magnifyingglass, which crash RBSymbolAnimator during
+                    // sheet presentation layout (ClipStrokeKeyframes mergingRawIndexedKeyframes).
                     Spacer()
                     if phase == .extractionFailed {
                         extractionFailedSection
@@ -44,6 +49,7 @@ struct ImportView: View {
                     }
                 }
                 .padding(Spacing.md)
+                .symbolRenderingMode(.monochrome)
             }
             .navigationTitle("Import Recipe")
             .navigationBarTitleDisplayMode(.inline)
@@ -95,7 +101,10 @@ struct ImportView: View {
                     .presentationDragIndicator(.hidden)
                 }
             }
-            .onAppear { pasteFromClipboard() }
+            .onAppear { detectClipboardURL() }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                detectClipboardURL()
+            }
         }
     }
 
@@ -129,7 +138,15 @@ struct ImportView: View {
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
                     .disabled(phase == .fetching || phase == .extracting)
-                if !urlText.isEmpty && phase == .idle {
+                if urlText.isEmpty && phase == .idle && clipboardHasURL {
+                    Button {
+                        readClipboard()
+                    } label: {
+                        Text("Paste")
+                            .font(.scCaption)
+                            .foregroundStyle(Color.scAccent)
+                    }
+                } else if !urlText.isEmpty && phase == .idle {
                     Button {
                         urlText = ""
                         errorMessage = nil
@@ -321,11 +338,34 @@ struct ImportView: View {
 
     // MARK: - Logic
 
-    private func pasteFromClipboard() {
-        guard urlText.isEmpty,
-              let clip = UIPasteboard.general.string,
-              clip.hasPrefix("http") else { return }
-        urlText = clip
+    /// detectPatterns checks clipboard content type WITHOUT reading it — no privacy prompt.
+    /// Extracted into a nonisolated static so the pasteboard callback closure is never
+    /// inferred as @MainActor — Swift 6 strict concurrency would otherwise check actor
+    /// isolation when UIPasteboard calls the handler on its own serial queue, crashing.
+    private func detectClipboardURL() {
+        Task {
+            clipboardHasURL = await Self.clipboardHasProbableURL()
+        }
+    }
+
+    private nonisolated static func clipboardHasProbableURL() async -> Bool {
+        await withCheckedContinuation { continuation in
+            UIPasteboard.general.detectPatterns(for: [.probableWebURL]) { result in
+                continuation.resume(
+                    returning: (try? result.get())?.contains(.probableWebURL) == true
+                )
+            }
+        }
+    }
+
+    /// Called only on explicit user tap — iOS always allows user-initiated clipboard reads.
+    private func readClipboard() {
+        if let url = UIPasteboard.general.url {
+            urlText = url.absoluteString
+        } else if let clip = UIPasteboard.general.string, clip.hasPrefix("http") {
+            urlText = clip
+        }
+        clipboardHasURL = false
     }
 
     private var canImport: Bool {

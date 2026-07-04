@@ -39,7 +39,7 @@ actor LLMExtractor {
     private func stripToPlainText(html: String) -> String {
         guard let doc = try? SwiftSoup.parse(html) else { return "" }
         // Remove scripts, styles, nav, footer
-        try? doc.select("script, style, nav, footer, header, aside, .ad, .advertisement").remove()
+        _ = try? doc.select("script, style, nav, footer, header, aside, .ad, .advertisement").remove()
         return (try? doc.text()) ?? ""
     }
 

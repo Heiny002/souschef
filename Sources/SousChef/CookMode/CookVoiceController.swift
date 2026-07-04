@@ -39,16 +39,26 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
     // MARK: - Permissions
 
     func requestPermissions() async -> Bool {
-        let speechStatus: SFSpeechRecognizerAuthorizationStatus = await withCheckedContinuation { cont in
-            SFSpeechRecognizer.requestAuthorization { cont.resume(returning: $0) }
-        }
+        let speechStatus = await Self.requestSpeechAuthorization()
         guard speechStatus == .authorized else { return false }
-
-        let micGranted: Bool = await withCheckedContinuation { cont in
-            AVAudioSession.sharedInstance().requestRecordPermission { cont.resume(returning: $0) }
-        }
+        let micGranted = await Self.requestMicrophonePermission()
         isAvailable = micGranted
         return micGranted
+    }
+
+    /// nonisolated static: framework callbacks fire on arbitrary queues;
+    /// Swift 6 would infer @MainActor on closures defined inside a @MainActor context,
+    /// causing dispatch_assert_queue_fail when the callback queue isn't the main actor.
+    private nonisolated static func requestSpeechAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
+        await withCheckedContinuation { cont in
+            SFSpeechRecognizer.requestAuthorization { cont.resume(returning: $0) }
+        }
+    }
+
+    private nonisolated static func requestMicrophonePermission() async -> Bool {
+        await withCheckedContinuation { cont in
+            AVAudioSession.sharedInstance().requestRecordPermission { cont.resume(returning: $0) }
+        }
     }
 
     // MARK: - TTS
@@ -90,25 +100,17 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
             let inputNode = audioEngine.inputNode
             inputNode.removeTap(onBus: 0)
             let format = inputNode.outputFormat(forBus: 0)
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buf, _ in
-                self?.recognitionRequest?.append(buf)
-            }
+            Self.installAudioTap(on: inputNode, format: format, request: request)
 
             audioEngine.prepare()
             try audioEngine.start()
             isListening = true
 
-            recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-                guard let self else { return }
-                if let transcript = result?.bestTranscription.formattedString {
-                    Task { @MainActor [weak self] in
-                        self?.handleTranscript(transcript.lowercased())
-                    }
-                }
-                if error != nil || result?.isFinal == true {
-                    Task { @MainActor [weak self] in self?.isListening = false }
-                }
-            }
+            recognitionTask = Self.beginRecognition(
+                recognizer: recognizer, request: request,
+                onTranscript: { [weak self] text in self?.handleTranscript(text) },
+                onFinished: { [weak self] in self?.isListening = false }
+            )
         } catch {
             isListening = false
         }
@@ -123,6 +125,37 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
         recognitionRequest = nil
         recognitionTask = nil
         isListening = false
+    }
+
+    /// nonisolated static: recognitionTask callback fires on an internal Speech queue.
+    /// Same pattern as the other three fixes — closure must be defined outside @MainActor.
+    private nonisolated static func beginRecognition(
+        recognizer: SFSpeechRecognizer,
+        request: SFSpeechAudioBufferRecognitionRequest,
+        onTranscript: @MainActor @Sendable @escaping (String) -> Void,
+        onFinished: @MainActor @Sendable @escaping () -> Void
+    ) -> SFSpeechRecognitionTask {
+        recognizer.recognitionTask(with: request) { result, error in
+            if let transcript = result?.bestTranscription.formattedString {
+                Task { @MainActor in onTranscript(transcript.lowercased()) }
+            }
+            if error != nil || result?.isFinal == true {
+                Task { @MainActor in onFinished() }
+            }
+        }
+    }
+
+    /// nonisolated static: tap closure fires on RealtimeMessenger.mServiceQueue.
+    /// Swift 6 infers @MainActor on closures defined inside @MainActor functions,
+    /// causing dispatch_assert_queue_fail. Defining the closure here removes that inference.
+    private nonisolated static func installAudioTap(
+        on inputNode: AVAudioInputNode,
+        format: AVAudioFormat,
+        request: SFSpeechAudioBufferRecognitionRequest
+    ) {
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak request] buf, _ in
+            request?.append(buf)
+        }
     }
 
     // MARK: - Command detection
