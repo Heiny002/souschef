@@ -118,7 +118,7 @@
 		8E9B804037E381B1875A02E5 /* BlogRecipeSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlogRecipeSearch.swift; sourceTree = "<group>"; };
 		8F0BB97417274CF509B873CF /* SousChefTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SousChefTests.swift; sourceTree = "<group>"; };
 		9118C7EB140861CEAD591267 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		F1F2F3F4F5F6F7F8F9FAFBFC /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		C0FF1600000000000000CF01 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 		94514113B5418A9108E161B0 /* ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewView.swift; sourceTree = "<group>"; };
 		978D73B0701FE2FF6C4C3CA7 /* CookTimerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookTimerManager.swift; sourceTree = "<group>"; };
 		9B900B6CCB0A116CB1F75B38 /* FoodDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodDictionary.swift; sourceTree = "<group>"; };
@@ -263,7 +263,7 @@
 				5EAA90B603817B72C3654470 /* Tests */,
 				033973AAE34323E8A14F0232 /* Frameworks */,
 				416AF47B2A9CEE0F7C3C4BB6 /* Products */,
-				F1F2F3F4F5F6F7F8F9FAFBFC /* Secrets.xcconfig */,
+				C0FF1600000000000000CF01 /* Config.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -628,7 +628,7 @@
 		};
 		76F737E482E98407EEAA2ECB /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = F1F2F3F4F5F6F7F8F9FAFBFC /* Secrets.xcconfig */;
+			baseConfigurationReference = C0FF1600000000000000CF01 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/SousChef/SousChef.entitlements;
@@ -712,7 +712,7 @@
 		};
 		B630C36272BDD8D37EB77122 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = F1F2F3F4F5F6F7F8F9FAFBFC /* Secrets.xcconfig */;
+			baseConfigurationReference = C0FF1600000000000000CF01 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/SousChef/SousChef.entitlements;

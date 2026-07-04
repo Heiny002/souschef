@@ -1,0 +1,16 @@
+// Config.xcconfig — base build configuration (committed to the repo).
+//
+// Provides a safe default for every setting the project references, then
+// OPTIONALLY pulls in Secrets.xcconfig for developer-local values (API keys).
+// The `#include?` form means a missing Secrets.xcconfig is not an error: the
+// project builds without it and the LLM-fallback features simply stay inert.
+//
+// To add your key: copy Secrets.example.xcconfig → Secrets.xcconfig (or run
+// ./Scripts/bootstrap.sh) and fill in ANTHROPIC_API_KEY. Secrets.xcconfig is
+// gitignored so real keys never reach the repo.
+
+// Default so $(ANTHROPIC_API_KEY) always resolves. Overridden by Secrets.xcconfig
+// when present — this must appear BEFORE the include (last assignment wins).
+ANTHROPIC_API_KEY =
+
+#include? "Secrets.xcconfig"

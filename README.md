@@ -42,17 +42,20 @@ a signing team.)
 
 ## API key (optional)
 
-The project's base configuration references `Secrets.xcconfig`, which is
-gitignored so keys never land in the repo. `Scripts/bootstrap.sh` copies the
-committed `Secrets.example.xcconfig` template into place. To turn on the
-LLM-fallback layers, edit `Secrets.xcconfig`:
+The project builds and runs **without any setup** — the base configuration is
+the committed `Config.xcconfig`, which *optionally* includes a gitignored
+`Secrets.xcconfig` (`#include?`) if one is present. No secrets file means no
+error; the deterministic extraction layers work regardless and the LLM-fallback
+features simply stay inert.
+
+To turn on the LLM-fallback layers, create `Secrets.xcconfig` (run
+`./Scripts/bootstrap.sh`, or copy `Secrets.example.xcconfig`) and add your key:
 
 ```
 ANTHROPIC_API_KEY = sk-ant-...
 ```
 
-The app builds and runs without a key; the deterministic extraction layers work
-regardless, and the LLM-fallback features simply stay inert.
+`Secrets.xcconfig` is gitignored so real keys never reach the repo.
 
 ## Running the tests
 
