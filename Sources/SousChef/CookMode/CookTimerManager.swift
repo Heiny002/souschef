@@ -31,8 +31,11 @@ enum TimerDetector {
 
     // MARK: - Range "2-3 minutes" / "2 to 3 minutes"
 
+    // Separator accepts "to" plus hyphen and the typographic dashes recipe plugins
+    // often emit (en-dash "–", em-dash "—", minus "−") — otherwise "10–15 minutes"
+    // silently fails to match and no timer is offered.
     private static let rangeRE = try? NSRegularExpression(
-        pattern: #"(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?|seconds?|secs?)"#,
+        pattern: #"(\d+(?:\.\d+)?)\s*(?:to|[-–—−])\s*(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?|seconds?|secs?)"#,
         options: .caseInsensitive
     )
 

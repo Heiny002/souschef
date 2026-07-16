@@ -74,8 +74,11 @@ struct CookModeView: View {
         let sorted = recipe.steps.sorted { $0.order < $1.order }
         let rawInstructions = sorted.flatMap { MicroStepSplitter.split($0.instruction) }
 
-        // Annotate first-mention ingredients with their measurements
-        let annotated = IngredientAnnotator.annotate(rawInstructions, with: recipe.ingredients)
+        // Reorder so an oven preheat overlaps hands-off downtime (marinate/chill/rest).
+        let sequenced = StepSequencer.reorder(rawInstructions)
+
+        // Annotate first-mention ingredients with their measurements (in final cook order)
+        let annotated = IngredientAnnotator.annotate(sequenced, with: recipe.ingredients)
 
         microSteps = annotated.map { instruction in
             MicroStep(
