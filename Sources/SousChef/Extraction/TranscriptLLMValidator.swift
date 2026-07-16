@@ -154,10 +154,9 @@ actor TranscriptLLMValidator {
     }
 
     private func extractJSON(from text: String) -> String {
-        if let start = text.range(of: "{"), let end = text.range(of: "}", options: .backwards) {
-            return String(text[start.lowerBound...end.upperBound])
-        }
-        return text
+        // Shared with LLMExtractor — uses a half-open range so a response ending in `}`
+        // (the format both prompts request) no longer traps. See JSONResponseParser.
+        JSONResponseParser.extractObject(from: text)
     }
 }
 

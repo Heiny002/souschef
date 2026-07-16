@@ -50,4 +50,19 @@ final class TimerDetectorTests: XCTestCase {
         XCTAssertNotNil(t)
         XCTAssertTrue(t?.isPerSide ?? false)
     }
+
+    // MARK: - Overflow hardening (untrusted scraped durations)
+
+    func testHugeDurationDoesNotCrashAndIsRejected() {
+        // Previously trapped in `Int(v * 60)` before the >= 10 guard could run.
+        XCTAssertNil(TimerDetector.detect(in: "Cook for 99999999999999999999 minutes."))
+        XCTAssertNil(TimerDetector.detect(in: "Bake for 999999999999999999999 hours."))
+        XCTAssertNil(TimerDetector.detect(in: "Rest for 5000000000-6000000000 minutes."))
+    }
+
+    func testDurationAtTheCeilingStillWorks() {
+        // 24h is the ceiling; a normal long braise is still accepted.
+        let t = TimerDetector.detect(in: "Braise for 6 hours.")
+        XCTAssertEqual(t?.seconds, 21_600)
+    }
 }

@@ -22,8 +22,18 @@ enum IngredientAnnotator {
         ingredients: [Ingredient],
         mentioned: inout Set<String>
     ) -> String {
+        // Collect every insertion first, as `String.Index` positions in the ORIGINAL text,
+        // then apply them right-to-left. Two bugs this avoids:
+        //  1. NSRange (UTF-16) offsets were fed to `index(_:offsetBy:)` (grapheme counting),
+        //     so any emoji/accented char — routine in scraped step text — mis-placed the
+        //     measurement or trapped when the offset ran past the end.
+        //  2. Offsets measured against the fixed original were inserted into a progressively
+        //     mutated string, so later insertions landed short by the earlier ones' length
+        //     ("Add the olive oil (2 tbsp) a (1 clove)nd garlic.").
+        // Inserting from the highest index downward keeps every remaining index valid.
         var result = text
-        let lowered = text.lowercased()
+        var insertions: [(at: String.Index, text: String)] = []
+        var claimed: [Range<String.Index>] = []
 
         for ingredient in ingredients {
             let key = ingredient.item.lowercased()
@@ -32,24 +42,30 @@ enum IngredientAnnotator {
             // Skip ingredients with no quantity info to annotate
             guard ingredient.quantity != nil || ingredient.unit != nil else { continue }
 
-            // Find the ingredient name in the text
-            guard let range = findIngredient(key, in: lowered) else { continue }
+            // Find the ingredient name (case-insensitive) in the original text.
+            guard let range = findIngredient(key, in: result) else { continue }
 
-            mentioned.insert(key)
+            // Skip a shorter name nested inside an already-claimed longer one
+            // ("oil" inside a matched "olive oil").
+            guard !claimed.contains(where: { $0.overlaps(range) }) else { continue }
 
             let measurement = formatMeasurement(ingredient)
             guard !measurement.isEmpty else { continue }
 
-            // Insert " (measurement)" right after the matched name, before any trailing punctuation
-            let matchEnd = result.index(result.startIndex, offsetBy: range.upperBound)
-            result.insert(contentsOf: " (\(measurement))", at: matchEnd)
+            mentioned.insert(key)
+            claimed.append(range)
+            insertions.append((range.upperBound, " (\(measurement))"))
+        }
+
+        for insertion in insertions.sorted(by: { $0.at > $1.at }) {
+            result.insert(contentsOf: insertion.text, at: insertion.at)
         }
         return result
     }
 
     /// Find ingredient name in text, handling singular/plural.
-    /// Returns the character range (in the lowercased text) of the match.
-    private static func findIngredient(_ item: String, in text: String) -> Range<Int>? {
+    /// Returns the range (in `text`'s own index space) of the match.
+    private static func findIngredient(_ item: String, in text: String) -> Range<String.Index>? {
         let variants = nameVariants(item)
         for variant in variants {
             if let range = wordBoundaryRange(of: variant, in: text) {
@@ -85,16 +101,19 @@ enum IngredientAnnotator {
         return variants
     }
 
-    /// Find a word-boundary match, returning the integer character range.
-    private static func wordBoundaryRange(of term: String, in text: String) -> Range<Int>? {
+    /// Find a word-boundary match, returning a `String.Index` range in `text`.
+    /// `Range(_:in:)` maps the regex's UTF-16 offsets back to grapheme-cluster indices, so
+    /// emoji/accented characters before the match no longer corrupt the position.
+    private static func wordBoundaryRange(of term: String, in text: String) -> Range<String.Index>? {
         guard !term.isEmpty else { return nil }
         let pattern = "\\b\(NSRegularExpression.escapedPattern(for: term))\\b"
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
             return nil
         }
         let nsRange = NSRange(text.startIndex..., in: text)
-        guard let match = regex.firstMatch(in: text, range: nsRange) else { return nil }
-        return match.range.location ..< (match.range.location + match.range.length)
+        guard let match = regex.firstMatch(in: text, range: nsRange),
+              let range = Range(match.range, in: text) else { return nil }
+        return range
     }
 
     /// Format a compact measurement string: "2 cups", "3 tbsp", "1".
