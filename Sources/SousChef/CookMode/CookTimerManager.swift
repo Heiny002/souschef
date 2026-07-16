@@ -50,8 +50,7 @@ enum TimerDetector {
 
         let unit = String(text[r3])
         let mid = (lo + hi) / 2.0
-        let secs = toSeconds(mid, unit: unit)
-        guard secs >= 10 else { return nil }
+        guard let secs = toSeconds(mid, unit: unit), secs >= 10 else { return nil }
         let label = "\(Int(lo))–\(Int(hi)) \(normalizeUnit(unit, count: Int(hi)))"
         return (label, secs)
     }
@@ -71,19 +70,28 @@ enum TimerDetector {
               let value = Double(text[r1]) else { return nil }
 
         let unit = String(text[r2])
-        let secs = toSeconds(value, unit: unit)
-        guard secs >= 10 else { return nil }
+        guard let secs = toSeconds(value, unit: unit), secs >= 10 else { return nil }
         let label = "\(Int(value)) \(normalizeUnit(unit, count: Int(value)))"
         return (label, secs)
     }
 
     // MARK: - Helpers
 
-    private static func toSeconds(_ v: Double, unit: String) -> Int {
+    /// Longest a cook timer is allowed to be (24h). Scraped instruction text is untrusted,
+    /// so an absurd digit run ("cook for 99999999999999999999 minutes") must be rejected.
+    private static let maxSeconds: Double = 86_400
+
+    private static func toSeconds(_ v: Double, unit: String) -> Int? {
         let u = unit.lowercased()
-        if u.hasPrefix("hour") || u.hasPrefix("hr") { return Int(v * 3600) }
-        if u.hasPrefix("min") { return Int(v * 60) }
-        return Int(v)
+        let multiplier: Double
+        if u.hasPrefix("hour") || u.hasPrefix("hr") { multiplier = 3600 }
+        else if u.hasPrefix("min") { multiplier = 60 }
+        else { multiplier = 1 }
+
+        // Clamp in Double space BEFORE the `Int(...)` cast, which traps above Int.max.
+        let seconds = v * multiplier
+        guard seconds.isFinite, seconds >= 0, seconds <= maxSeconds else { return nil }
+        return Int(seconds)
     }
 
     private static func normalizeUnit(_ unit: String, count: Int) -> String {

@@ -123,11 +123,25 @@ actor LLMExtractor {
     }
 
     private func extractJSON(from text: String) -> String {
-        // Strip ```json ... ``` markdown fences if present
-        if let start = text.range(of: "{"), let end = text.range(of: "}", options: .backwards) {
-            return String(text[start.lowerBound...end.upperBound])
+        JSONResponseParser.extractObject(from: text)
+    }
+}
+
+/// Extracts the outermost JSON object (first `{` to last `}`) from an LLM response that may
+/// be wrapped in prose or ```json fences.
+enum JSONResponseParser {
+    static func extractObject(from text: String) -> String {
+        // Half-open range up to `end.upperBound`: `end.upperBound` is the index *after* the
+        // closing `}`. The previous closed-range `...end.upperBound` trapped whenever the
+        // response ended exactly with `}` — the normal case, since both prompts say
+        // "Return ONLY valid JSON" — because that index equals `endIndex`. The guard also
+        // rejects a stray `}`-before-`{` ordering instead of forming an invalid range.
+        guard let start = text.range(of: "{"),
+              let end = text.range(of: "}", options: .backwards),
+              start.lowerBound < end.upperBound else {
+            return text
         }
-        return text
+        return String(text[start.lowerBound..<end.upperBound])
     }
 }
 
