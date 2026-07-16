@@ -22,7 +22,17 @@ targets:
     sources:
       - path: Sources/SousChef
     resources:
-      - path: Sources/SousChef/Resources
+      # Fonts are copied flat to the bundle root; Info.plist's UIAppFonts
+      # references them by bare filename.
+      - path: Sources/SousChef/Resources/Fonts
+        optional: true
+      # Data must be a folder reference (blue) so the JSON files land under a
+      # "Data/" subdirectory in the bundle. The loaders resolve them with
+      # `subdirectory: "Data"`; a plain group would flatten them to the root
+      # and every lookup would return nil, silently disabling the diet/allergy
+      # safety feature (see docs/AUDIT-second-pass.md).
+      - path: Sources/SousChef/Resources/Data
+        type: folder
         optional: true
     dependencies:
       - package: SwiftSoup

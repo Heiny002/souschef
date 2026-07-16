@@ -12,6 +12,8 @@ struct CompatibilityView: View {
     @State private var dinerResults: [DinerCompatibility] = []
     @State private var selectedIngredient: IngredientWithResults?
     @State private var showAutoAdaptConfirm = false
+    @State private var adaptPlan = AutoAdaptPlan(lines: [])
+    @State private var adaptSummary: AdaptSummary?
 
     private let matcher = ProfileMatcher()
     private let substitutions = SubstitutionLibrary.shared
@@ -51,7 +53,19 @@ struct CompatibilityView: View {
                 Button("Create Adapted Copy") { autoAdapt() }
                 Button("Cancel", role: .cancel) { }
             } message: {
-                Text("A new recipe will be created with suggested substitutions applied for all flagged ingredients.")
+                Text("A new copy will be created with safe substitutions applied where one exists that works for every diner. Ingredients that can't be safely substituted are kept and flagged — review before cooking.")
+            }
+            .alert(
+                "Adapted Recipe Created",
+                isPresented: Binding(
+                    get: { adaptSummary != nil },
+                    set: { if !$0 { adaptSummary = nil } }
+                ),
+                presenting: adaptSummary
+            ) { _ in
+                Button("Done") { adaptSummary = nil; dismiss() }
+            } message: { summary in
+                Text(summary.message)
             }
         }
     }
@@ -134,8 +148,13 @@ struct CompatibilityView: View {
 
     // MARK: - Auto-Adapt
 
+    /// Auto-Adapt is only offered when at least one red-flagged ingredient has a substitute
+    /// that is safe (green) for every diner. A yellow-only recipe — or one whose red flags
+    /// are all unsubstitutable (allergy/custom restriction, or no substitution data) — would
+    /// otherwise produce an identical "(Adapted)" duplicate with nothing changed, so we hide
+    /// the action instead (audit: low-severity yellow-only duplicate).
     private var canAutoAdapt: Bool {
-        dinerResults.contains { $0.worstLevel > .green }
+        adaptPlan.hasSafeSubstitutions
     }
 
     private func autoAdapt() {
@@ -151,24 +170,28 @@ struct CompatibilityView: View {
         adapted.cookTime = recipe.cookTime
         adapted.totalTime = recipe.totalTime
         adapted.appliances = recipe.appliances
-        adapted.userVerified = true
+        adapted.recipeDescription = recipe.recipeDescription
+        // A machine-generated copy is NOT user-verified. Auto-Adapt cannot guarantee safety
+        // (some flags are unfixable), so it must never mark the copy as trusted (C3/H2).
+        adapted.userVerified = false
 
-        for ingredient in recipe.ingredients.sorted(by: { $0.order < $1.order }) {
-            let results = dinerResultsFor(ingredient: ingredient)
-            let worstLevel = results.values.max(by: { $0.level < $1.level })?.level ?? .green
+        var substituted: [String] = []
+        var unfixable: [String] = []
 
-            if worstLevel == .red,
-               let worstDiet = results.values.first(where: { $0.level == .red })?.triggeringDiet?.lowercased() {
-                // Find a substitution
-                let sub = substitutions.options(for: ingredient.item, diet: worstDiet)
-                let newItem = sub?.first ?? ingredient.item
-                let newRawText = sub?.first.map { "\(ingredient.quantity ?? "") \(ingredient.unit ?? "") \($0)".trimmingCharacters(in: .whitespaces) } ?? ingredient.rawText
-                let newIngredient = Ingredient(item: newItem, rawText: newRawText, order: ingredient.order)
+        for line in adaptPlan.lines {
+            let ingredient = line.ingredient
+            if let sub = line.substitute {
+                let parts = [ingredient.quantity, ingredient.unit, sub].compactMap { $0 }
+                let newRawText = parts.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+                let newIngredient = Ingredient(item: sub,
+                                               rawText: newRawText.isEmpty ? sub : newRawText,
+                                               order: ingredient.order)
                 newIngredient.quantity = ingredient.quantity
                 newIngredient.unit = ingredient.unit
                 newIngredient.preparation = ingredient.preparation
                 newIngredient.section = ingredient.section
                 adapted.ingredients.append(newIngredient)
+                substituted.append("\(ingredient.item) → \(sub)")
             } else {
                 let copy = Ingredient(item: ingredient.item, rawText: ingredient.rawText, order: ingredient.order)
                 copy.quantity = ingredient.quantity
@@ -176,29 +199,92 @@ struct CompatibilityView: View {
                 copy.preparation = ingredient.preparation
                 copy.section = ingredient.section
                 adapted.ingredients.append(copy)
+                if line.unfixable { unfixable.append(ingredient.item) }
             }
         }
 
         for step in recipe.steps.sorted(by: { $0.order < $1.order }) {
             let copy = CookingStep(order: step.order, instruction: step.instruction, rawText: step.rawText)
             copy.duration = step.duration
+            copy.temperature = step.temperature
+            copy.timerLabel = step.timerLabel
             adapted.steps.append(copy)
         }
 
         modelContext.insert(adapted)
-        dismiss()
+
+        // Re-validate the finished copy against every diner (C3): the summary tells the user
+        // exactly what was and wasn't fixed, and warns about any diner still at risk.
+        let revalidated = matcher.match(ingredients: adapted.ingredients, diners: diners)
+        let stillUnsafe = revalidated
+            .filter { $0.worstLevel == .red }
+            .map { $0.profile.name }
+
+        adaptSummary = AdaptSummary(
+            substituted: substituted,
+            unfixable: unfixable,
+            stillUnsafeDiners: stillUnsafe
+        )
+    }
+
+    // MARK: - Auto-Adapt planning
+
+    private func buildPlan() -> AutoAdaptPlan {
+        var lines: [AutoAdaptPlan.Line] = []
+        for ingredient in recipe.ingredients.sorted(by: { $0.order < $1.order }) {
+            let results = dinerResultsFor(ingredient: ingredient)
+            let worst = results.values.map(\.level).max() ?? .green
+            guard worst == .red else {
+                lines.append(.init(ingredient: ingredient, worstLevel: worst, substitute: nil, unfixable: false))
+                continue
+            }
+            let substitute = safeSubstitute(for: ingredient)
+            lines.append(.init(ingredient: ingredient, worstLevel: worst,
+                               substitute: substitute, unfixable: substitute == nil))
+        }
+        return AutoAdaptPlan(lines: lines)
+    }
+
+    /// A substitute for a red-flagged ingredient that is green for EVERY diner, or nil.
+    /// Candidates are drawn from every diet that red-flags the ingredient (for any diner) and
+    /// each is re-validated against all diners before acceptance — so a swap that fixes one
+    /// diner but introduces another's allergen (flour → almond flour for a nut-allergic
+    /// member) is rejected rather than applied and mislabelled "Adapted" (C3).
+    private func safeSubstitute(for ingredient: Ingredient) -> String? {
+        var dietIds: [String] = []
+        for diner in diners {
+            for id in matcher.redFlaggingDietIds(item: ingredient.item, rawText: ingredient.rawText, diner: diner)
+            where !dietIds.contains(id) {
+                dietIds.append(id)
+            }
+        }
+
+        var candidates: [String] = []
+        for dietId in dietIds {
+            // nil (prohibited) and [] (no data) both mean "nothing to apply from this diet".
+            guard let options = substitutions.options(for: ingredient.item, diet: dietId) else { continue }
+            for opt in options where !candidates.contains(opt) { candidates.append(opt) }
+        }
+
+        return candidates.first { candidate in
+            diners.allSatisfy { diner in
+                matcher.evaluate(item: candidate, rawText: candidate, against: diner).level == .green
+            }
+        }
     }
 
     // MARK: - Helpers
 
     private func computeResults() {
         dinerResults = matcher.match(ingredients: recipe.ingredients, diners: diners)
+        adaptPlan = buildPlan()
     }
 
     private func dinerResultsFor(ingredient: Ingredient) -> [UUID: IngredientCompatibility] {
         var out: [UUID: IngredientCompatibility] = [:]
         for dinerCompat in dinerResults {
-            if let c = dinerCompat.results[ingredient.rawText] {
+            // Keyed by the ingredient's stable id, not rawText (which can repeat) — C1.
+            if let c = dinerCompat.results[ingredient.id] {
                 out[dinerCompat.profile.id] = c
             }
         }
@@ -263,6 +349,51 @@ struct IngredientWithResults: Identifiable {
     let id = UUID()
     let ingredient: Ingredient
     let results: [UUID: IngredientCompatibility]
+}
+
+// MARK: - Auto-Adapt model
+
+/// A planned adaptation: one line per recipe ingredient, with a safe substitute where one
+/// exists that works for every diner, and a flag for red ingredients that couldn't be fixed.
+struct AutoAdaptPlan {
+    struct Line {
+        let ingredient: Ingredient
+        let worstLevel: CompatibilityLevel
+        /// A substitute that is green for every diner, or nil to keep the original.
+        let substitute: String?
+        /// True when the ingredient is red-flagged but no safe substitute exists.
+        let unfixable: Bool
+    }
+
+    let lines: [Line]
+
+    /// At least one ingredient will actually change — otherwise adapting is a no-op.
+    var hasSafeSubstitutions: Bool { lines.contains { $0.substitute != nil } }
+}
+
+/// Post-adaptation summary shown to the user, so the copy never silently over-promises.
+struct AdaptSummary {
+    let substituted: [String]        // "flour → gluten-free flour"
+    let unfixable: [String]          // ingredient names kept because no safe swap existed
+    let stillUnsafeDiners: [String]  // diners for whom the adapted copy is still RED
+
+    var message: String {
+        var parts: [String] = []
+        if substituted.isEmpty {
+            parts.append("No ingredients could be safely substituted.")
+        } else {
+            let list = substituted.map { "• \($0)" }.joined(separator: "\n")
+            parts.append("Substituted \(substituted.count) ingredient\(substituted.count == 1 ? "" : "s"):\n\(list)")
+        }
+        if !unfixable.isEmpty {
+            let list = unfixable.map { "• \($0)" }.joined(separator: "\n")
+            parts.append("Could not safely substitute:\n\(list)")
+        }
+        if !stillUnsafeDiners.isEmpty {
+            parts.append("⚠️ Still not safe for: \(stillUnsafeDiners.joined(separator: ", ")). Review before cooking.")
+        }
+        return parts.joined(separator: "\n\n")
+    }
 }
 
 private struct SubstitutionSheet: View {
