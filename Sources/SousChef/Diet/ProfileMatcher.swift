@@ -67,7 +67,7 @@ struct ProfileMatcher {
         // re-running a whole-dictionary Levenshtein scan per ingredient per diner
         // (former performance hot spot). Exact resolution also avoids fuzzy mismatches
         // being amplified into RED safety flags.
-        let resolved: [(ingredient: Ingredient, entry: FoodEntry?)] = ingredients.map {
+        let resolved: [(ingredient: Ingredient, food: ResolvedFood)] = ingredients.map {
             ($0, resolveEntry(item: $0.item.lowercased(), text: $0.rawText.lowercased()))
         }
 
@@ -78,7 +78,7 @@ struct ProfileMatcher {
                 results[pair.ingredient.id] = evaluate(
                     item: pair.ingredient.item.lowercased(),
                     text: pair.ingredient.rawText.lowercased(),
-                    entry: pair.entry,
+                    resolved: pair.food,
                     diner: diner
                 )
             }
@@ -92,7 +92,7 @@ struct ProfileMatcher {
     func evaluate(item rawItem: String, rawText: String, against diner: DinerProfile) -> IngredientCompatibility {
         let item = rawItem.lowercased()
         let text = rawText.lowercased()
-        return evaluate(item: item, text: text, entry: resolveEntry(item: item, text: text), diner: diner)
+        return evaluate(item: item, text: text, resolved: resolveEntry(item: item, text: text), diner: diner)
     }
 
     /// The ids of the diner's *diets* (never "Allergy"/"Custom Restriction") that flag this
@@ -102,27 +102,45 @@ struct ProfileMatcher {
     func redFlaggingDietIds(item rawItem: String, rawText: String, diner: DinerProfile) -> [String] {
         let item = rawItem.lowercased()
         let text = rawText.lowercased()
-        let entry = resolveEntry(item: item, text: text)
+        let resolved = resolveEntry(item: item, text: text)
         return diner.diets.filter { dietId in
             guard let diet = library.diet(id: dietId) else { return false }
-            return checkDiet(item: item, text: text, entry: entry, diet: diet).level == .red
+            return checkDiet(item: item, text: text, resolved: resolved, diet: diet).level == .red
         }
     }
 
     // MARK: - Food-entry resolution
 
-    private func resolveEntry(item: String, text: String) -> FoodEntry? {
-        if let e = dictionary.find(name: item) { return e }
+    /// A resolved food entry plus whether the resolution is trustworthy enough to inherit
+    /// the entry's *category* and *declared allergens*.
+    struct ResolvedFood {
+        let entry: FoodEntry?
+        /// False when resolved only via a "reformulable form" head noun — e.g. "buckwheat
+        /// flour" / "rice flour" resolve to the wheat "flour" entry, and "vegan butter" to
+        /// the dairy "butter" entry. The source modifier, not the form, determines the real
+        /// category/allergens, so those must NOT be inherited from the entry. Direct
+        /// word matches (e.g. an "almond"/"sesame" allergy) still apply regardless.
+        let confident: Bool
+    }
+
+    private func resolveEntry(item: String, text: String) -> ResolvedFood {
+        if let e = dictionary.find(name: item) { return ResolvedFood(entry: e, confident: true) }
         if let last = item.split(separator: " ").last.map(String.init),
-           let e = dictionary.find(name: last) { return e }
+           let e = dictionary.find(name: last) {
+            return ResolvedFood(entry: e, confident: !IngredientMatcher.reformulableForms.contains(last))
+        }
         if let last = text.split(separator: " ").last.map(String.init),
-           let e = dictionary.find(name: last) { return e }
-        return nil
+           let e = dictionary.find(name: last) {
+            return ResolvedFood(entry: e, confident: !IngredientMatcher.reformulableForms.contains(last))
+        }
+        return ResolvedFood(entry: nil, confident: true)
     }
 
     // MARK: - Per-ingredient evaluation
 
-    private func evaluate(item: String, text: String, entry: FoodEntry?, diner: DinerProfile) -> IngredientCompatibility {
+    private func evaluate(item: String, text: String, resolved: ResolvedFood, diner: DinerProfile) -> IngredientCompatibility {
+        let entry = resolved.entry
+
         // 1. Custom restrictions ("ingredients to avoid") — always RED on a match.
         for restriction in diner.customRestrictions {
             if IngredientMatcher.matches(term: restriction, item: item, text: text, entry: entry) {
@@ -139,7 +157,7 @@ struct ProfileMatcher {
         //    allergens (shrimp → shellfish, mayonnaise → eggs) are caught, not just the
         //    diner's literal typed word.
         for allergy in diner.allergies {
-            if let reason = allergyReason(allergy: allergy, item: item, text: text, entry: entry) {
+            if let reason = allergyReason(allergy: allergy, item: item, text: text, resolved: resolved) {
                 return IngredientCompatibility(
                     ingredientText: text,
                     level: .red,
@@ -154,7 +172,7 @@ struct ProfileMatcher {
         var worstDiet: String?
         var worstReason: String?
         for diet in diner.diets.compactMap({ library.diet(id: $0) }) {
-            let result = checkDiet(item: item, text: text, entry: entry, diet: diet)
+            let result = checkDiet(item: item, text: text, resolved: resolved, diet: diet)
             if result.level > worstLevel {
                 worstLevel = result.level
                 worstDiet = diet.name
@@ -185,23 +203,27 @@ struct ProfileMatcher {
     // MARK: - Allergy resolution
 
     /// Returns a reason string if `allergy` applies to this ingredient, else nil.
-    private func allergyReason(allergy: String, item: String, text: String, entry: FoodEntry?) -> String? {
+    private func allergyReason(allergy: String, item: String, text: String, resolved: ResolvedFood) -> String? {
+        let entry = resolved.entry
+
         // Direct word-boundary match on the typed allergy (e.g. "peanut" → "peanut butter").
         if IngredientMatcher.matches(term: allergy, item: item, text: text, entry: entry) {
             return "Allergen: \(allergy)"
         }
 
-        // Category / allergen resolution through the food dictionary.
-        guard let entry = entry else { return nil }
+        // Category / allergen resolution through the food dictionary. Only trusted for a
+        // confident resolution: "buckwheat flour" resolves via its head noun to the wheat
+        // "flour" entry, whose gluten/wheat allergens are NOT buckwheat's. A real source
+        // allergen ("almond flour") is caught by the direct word match above instead.
+        guard let entry = entry, resolved.confident else { return nil }
         let profile = IngredientMatcher.allergenProfile(for: allergy)
         let entryAllergens = Set(entry.commonAllergens.map { $0.lowercased() })
 
-        // The entry's declared allergens always apply (they reflect the food itself).
         if !profile.allergens.isDisjoint(with: entryAllergens) {
             return "Contains \(allergy) (\(entry.name))"
         }
-        // Category-based resolution is skipped for a reformulated item ("vegan butter" that
-        // resolves to the dairy "butter" entry is not dairy) — mirrors the diet category check.
+        // Category-based resolution is also skipped for a reformulated item ("vegan butter"
+        // that resolves to the dairy "butter" entry is not dairy) — mirrors the diet check.
         if !IngredientMatcher.hasNegatingModifier(item: item, text: text) {
             let entryCategories = Set(entry.categories.map { $0.lowercased() })
             if !profile.categories.isDisjoint(with: entryCategories) {
@@ -218,14 +240,15 @@ struct ProfileMatcher {
         let reason: String?
     }
 
-    private func checkDiet(item: String, text: String, entry: FoodEntry?, diet: DietDefinition) -> CheckResult {
-        let categories = Set((entry?.categories ?? []).map { $0.lowercased() })
+    private func checkDiet(item: String, text: String, resolved: ResolvedFood, diet: DietDefinition) -> CheckResult {
+        let entry = resolved.entry
         let negated = IngredientMatcher.hasNegatingModifier(item: item, text: text)
 
-        // Category-level RED check. Skipped for a reformulated item ("vegan butter",
-        // "dairy-free cheese") that resolves via its head noun to a restricted category it
-        // no longer belongs to — the modifier signals the food was made to comply.
-        if !negated {
+        // Category-level RED check. Uses the entry's category only when resolution is
+        // confident (not a "buckwheat flour" → "flour" head-noun guess) and the item isn't
+        // a reformulated "vegan"/"dairy-free" version that no longer belongs to the category.
+        if resolved.confident, !negated {
+            let categories = Set((entry?.categories ?? []).map { $0.lowercased() })
             for restricted in diet.restrictedCategories {
                 if categories.contains(restricted.lowercased()) {
                     return CheckResult(level: .red, reason: "\(restricted.capitalized) not allowed on \(diet.name)")
@@ -248,8 +271,10 @@ struct ProfileMatcher {
             }
         }
 
-        // Allergen cross-reference with the diet's restricted ingredients.
-        if let entry = entry {
+        // Allergen cross-reference with the diet's restricted ingredients — confident
+        // resolutions only, so "buckwheat flour" doesn't inherit the wheat "flour" entry's
+        // gluten/wheat allergens and get a spurious YELLOW on gluten-free.
+        if let entry = entry, resolved.confident {
             for allergen in entry.commonAllergens {
                 if diet.restrictedIngredients.contains(where: { $0.lowercased() == allergen.lowercased() }) {
                     return CheckResult(level: .yellow, reason: "May trigger \(allergen) restriction")
@@ -418,6 +443,17 @@ enum IngredientMatcher {
         }
         return rawWordMatch(needle, in: scrubbed)
     }
+
+    /// "Form" head nouns that can be made from many different sources, so a modifier in
+    /// front of them changes the food's real category and allergens: "rice/buckwheat flour"
+    /// is not wheat, "almond/oat milk" is not dairy, "vegan butter" is not dairy. When an
+    /// item resolves to a food entry only via one of these head nouns, the entry's category
+    /// and declared allergens are not trusted (the source modifier decides them instead).
+    /// The head noun itself and any real source allergen are still caught by direct word
+    /// matching (e.g. an "almond" or "sesame" allergy against "almond flour" / "sesame oil").
+    static let reformulableForms: Set<String> = [
+        "flour", "milk", "butter", "cream", "cheese", "yogurt", "yoghurt", "oil",
+    ]
 
     /// Modifiers that reformulate a food out of its head noun's class, so its head-noun
     /// category must not be inherited: "vegan butter" is not dairy, "meatless crumbles" are

@@ -86,6 +86,26 @@ final class ProfileMatcherTests: XCTestCase {
         XCTAssertEqual(level("buckwheat flour", "buckwheat", diner: diner(diets: ["gluten-free"])), .green, "wheat must not flag buckwheat")
     }
 
+    /// A source-modified "form" ingredient must not inherit the plain form's category or
+    /// allergens via head-noun resolution ("rice/buckwheat flour" → the wheat "flour" entry,
+    /// "vegan butter" → the dairy "butter" entry).
+    func testReformulableFormsNotFlaggedByHeadNoun() {
+        XCTAssertEqual(level("rice flour", diner: diner(diets: ["gluten-free"])), .green)
+        XCTAssertEqual(level("coconut flour", diner: diner(diets: ["gluten-free"])), .green)
+        XCTAssertEqual(level("vegan butter", diner: diner(diets: ["dairy-free"])), .green)
+        // A wheat-allergic diner is also safe with a wheat-free flour.
+        XCTAssertEqual(level("rice flour", diner: diner(allergies: ["wheat"])), .green)
+    }
+
+    /// The head-noun resolution that the confidence gate protects must still work for real
+    /// category hits: "pork shoulder"/"beef brisket" resolve via their head noun to a meat
+    /// entry, and meat-restricting diets must still flag them.
+    func testHeadNounCategoryStillCatchesMeat() {
+        XCTAssertEqual(level("pork shoulder", diner: diner(diets: ["pescatarian"])), .red)
+        XCTAssertEqual(level("pork shoulder", diner: diner(diets: ["vegetarian"])), .red)
+        XCTAssertEqual(level("cheddar cheese", diner: diner(diets: ["dairy-free"])), .red)
+    }
+
     // MARK: - H3: religious diets catch common product forms
 
     func testKosherCatchesPorkAndShellfishForms() {
