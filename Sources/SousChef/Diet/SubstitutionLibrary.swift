@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// SC-054: Diet-aware substitution dictionary — 300+ entries keyed by ingredient.
 /// Organized by restriction reason (not generic swaps).
@@ -43,16 +44,27 @@ final class SubstitutionLibrary: @unchecked Sendable {
 
     // MARK: - Private
 
+    private static let logger = Logger(subsystem: "com.souschef.app", category: "SubstitutionLibrary")
+
     private func load() {
-        guard let url = Bundle.main.url(forResource: "substitutions", withExtension: "json",
-                                        subdirectory: "Data"),
-              let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode([SubstitutionEntry].self, from: data) else {
+        // Prefer the "Data/" folder reference, fall back to the bundle root so a
+        // resource-packaging change can't silently empty the substitution table.
+        guard let url = Bundle.main.url(forResource: "substitutions", withExtension: "json", subdirectory: "Data")
+                ?? Bundle.main.url(forResource: "substitutions", withExtension: "json") else {
+            Self.logger.critical("substitutions.json not found in bundle — no substitutions available")
+            assertionFailure("substitutions.json not found in bundle")
             return
         }
-        entries = decoded
-        for entry in decoded {
-            lookup[entry.ingredient.lowercased()] = entry
+        do {
+            let data = try Data(contentsOf: url)
+            let decoded = try JSONDecoder().decode([SubstitutionEntry].self, from: data)
+            entries = decoded
+            for entry in decoded {
+                lookup[entry.ingredient.lowercased()] = entry
+            }
+        } catch {
+            Self.logger.critical("Failed to load substitutions.json: \(error.localizedDescription, privacy: .public)")
+            assertionFailure("Failed to load substitutions.json: \(error)")
         }
     }
 

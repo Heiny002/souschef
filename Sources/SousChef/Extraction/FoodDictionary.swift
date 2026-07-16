@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// SC-041 / SC-051: Food entity dictionary — 100+ curated items with aliases, categories, allergens,
 /// and computed dietary flags (FODMAP, glycemic, sodium, processed).
@@ -101,19 +102,30 @@ final class FoodDictionary: @unchecked Sendable {
 
     // MARK: - Loading
 
+    private static let logger = Logger(subsystem: "com.souschef.app", category: "FoodDictionary")
+
     private func load() {
-        guard let url = Bundle.main.url(forResource: "food-dictionary", withExtension: "json",
-                                        subdirectory: "Data"),
-              let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode([FoodEntry].self, from: data) else {
+        // Prefer the "Data/" folder reference, fall back to the bundle root so a
+        // resource-packaging change can't silently empty the allergen dictionary.
+        guard let url = Bundle.main.url(forResource: "food-dictionary", withExtension: "json", subdirectory: "Data")
+                ?? Bundle.main.url(forResource: "food-dictionary", withExtension: "json") else {
+            Self.logger.critical("food-dictionary.json not found in bundle — allergen resolution is inert")
+            assertionFailure("food-dictionary.json not found in bundle — allergen resolution will be inert")
             return
         }
-        entries = decoded
-        for entry in decoded {
-            lookup[entry.name.lowercased()] = entry
-            for alias in entry.aliases {
-                lookup[alias.lowercased()] = entry
+        do {
+            let data = try Data(contentsOf: url)
+            let decoded = try JSONDecoder().decode([FoodEntry].self, from: data)
+            entries = decoded
+            for entry in decoded {
+                lookup[entry.name.lowercased()] = entry
+                for alias in entry.aliases {
+                    lookup[alias.lowercased()] = entry
+                }
             }
+        } catch {
+            Self.logger.critical("Failed to load food-dictionary.json: \(error.localizedDescription, privacy: .public)")
+            assertionFailure("Failed to load food-dictionary.json: \(error)")
         }
     }
 
