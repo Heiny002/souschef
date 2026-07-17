@@ -253,10 +253,10 @@ final class CookTimerState: ObservableObject {
         let timerLabel = label
         Task { [weak self] in
             let center = UNUserNotificationCenter.current()
-            let settings = await center.notificationSettings()
-            if settings.authorizationStatus == .notDetermined {
-                _ = try? await center.requestAuthorization(options: [.alert, .sound])
-            }
+            // No-ops (without UI) when permission was already decided; prompts only the
+            // first time. Avoids fetching UNNotificationSettings, which is non-Sendable
+            // under Swift 6 strict concurrency.
+            _ = try? await center.requestAuthorization(options: [.alert, .sound])
             // Re-read the deadline after the (possibly slow) permission prompt so the
             // notification still fires at the true expiry moment.
             guard let self, self.isRunning, let end = self.endDate else { return }

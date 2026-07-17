@@ -237,8 +237,11 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
 
     private func setAudioSessionForRecord() {
         let s = AVAudioSession.sharedInstance()
+        // .allowBluetooth is deprecated-renamed to .allowBluetoothHFP on newer SDKs, but
+        // the new name doesn't exist in Xcode 16.x (CI). Keep the old spelling until the
+        // minimum toolchain has the rename — it compiles everywhere.
         try? s.setCategory(.playAndRecord, mode: .default,
-                            options: [.defaultToSpeaker, .allowBluetoothHFP])
+                            options: [.defaultToSpeaker, .allowBluetooth])
         try? s.setActive(true)
     }
 
