@@ -9,6 +9,9 @@ struct ContentView: View {
             DinerProfilesView()
                 .tabItem { Label("Diners", systemImage: "person.2") }
                 .toolbarBackground(Color.scBackground, for: .tabBar)
+            SettingsView()
+                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .toolbarBackground(Color.scBackground, for: .tabBar)
         }
         .tint(Color.scAccent)
     }
