@@ -293,13 +293,21 @@ struct ReviewView: View {
     }
 
     private func saveRecipe() {
+        // Persist provenance (was previously dropped — both branches of a no-op ternary were nil).
+        // The link to open is the actual recipe page when we have it, else the submitted URL;
+        // the platform badge is decided by what the user originally submitted (a TikTok import
+        // keeps its TikTok identity even when the recipe text came from a linked blog page).
+        let storedURL = extractionResult.recipePageURL ?? extractionResult.originalSourceURL
+        let platformURL = extractionResult.originalSourceURL ?? extractionResult.recipePageURL
+
         let recipe = Recipe(
             title: title.trimmingCharacters(in: .whitespaces),
-            sourceURL: extractionResult.ingredients.isEmpty ? nil : nil,
-            sourceType: extractionResult.isSubstitute ? "web-search-substitute" : "web",
+            sourceURL: storedURL,
+            sourceType: URLRouter.sourceType(forStoredURL: platformURL),
             extractionConfidence: extractionResult.confidence,
             extractionMethod: extractionResult.extractionMethod
         )
+        recipe.thumbnailURL = extractionResult.thumbnailURL
         recipe.recipeYield = recipeYield.isEmpty ? nil : recipeYield
         recipe.recipeDescription = extractionResult.description
         recipe.appliances = extractionResult.appliances

@@ -44,4 +44,35 @@ enum URLRouter {
         if host == "youtu.be" { return true }
         return path.hasPrefix("/watch") || path.hasPrefix("/shorts/") || path.hasPrefix("/embed/") || path.hasPrefix("/v/")
     }
+
+    // MARK: - Provenance helpers
+
+    /// The `Recipe.sourceType` string to store for a given source URL. Defaults to "web".
+    static func sourceType(forStoredURL urlString: String?) -> String {
+        guard let urlString, !urlString.isEmpty else { return "web" }
+        return classify(urlString).storageValue
+    }
+
+    /// An `https` URL safe to open in a `Link` or load in `AsyncImage`, or nil. Provenance
+    /// values can originate from scraped/search content, so cleartext, non-http(s) schemes,
+    /// and hostless URLs are rejected before they reach a user-visible sink.
+    static func safeExternalURL(_ urlString: String?) -> URL? {
+        guard let urlString, !urlString.isEmpty,
+              let url = URL(string: urlString),
+              url.scheme?.lowercased() == "https",
+              let host = url.host, !host.isEmpty else { return nil }
+        return url
+    }
+}
+
+extension URLSourceType {
+    /// Value persisted in `Recipe.sourceType`.
+    var storageValue: String {
+        switch self {
+        case .tikTok:    return "tiktok"
+        case .instagram: return "instagram"
+        case .youTube:   return "youtube"
+        case .webPage:   return "web"
+        }
+    }
 }

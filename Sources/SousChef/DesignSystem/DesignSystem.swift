@@ -51,10 +51,13 @@ extension Font {
     static let scHeadline  = Font.custom("Lora-SemiBold", size: 22, relativeTo: .title)
     static let scTitle     = Font.custom("Lora-Regular",  size: 18, relativeTo: .title2)
 
-    // SF Pro — UI chrome, labels, body
-    static let scBody      = Font.system(size: 16, weight: .regular)
-    static let scLabel     = Font.system(size: 14, weight: .medium)
-    static let scCaption   = Font.system(size: 13, weight: .regular)
+    // SF Pro — UI chrome, labels, body. Mapped to semantic text styles (rather than fixed
+    // point sizes) so they scale with the user's Dynamic Type setting, matching the Lora
+    // tokens above which already use `relativeTo:`. Base sizes: callout 16, subheadline 15,
+    // footnote 13 — close to the previous 16/14/13.
+    static let scBody      = Font.system(.callout)
+    static let scLabel     = Font.system(.subheadline, weight: .medium)
+    static let scCaption   = Font.system(.footnote)
 }
 
 // MARK: - Spacing Tokens
