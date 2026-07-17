@@ -9,6 +9,7 @@ struct RecipeLibraryView: View {
     @State private var searchText = ""
     @State private var sortOrder = SortOption.dateAdded
     @State private var showImportSheet = false
+    @State private var pendingDelete: Recipe?
 
     enum SortOption: String, CaseIterable {
         case dateAdded = "Date Added"
@@ -43,7 +44,25 @@ struct RecipeLibraryView: View {
             .sheet(isPresented: $showImportSheet) {
                 ImportView()
             }
+            .confirmationDialog(
+                "Delete this recipe?",
+                isPresented: Binding(
+                    get: { pendingDelete != nil },
+                    set: { if !$0 { pendingDelete = nil } }
+                ),
+                presenting: pendingDelete
+            ) { recipe in
+                Button("Delete", role: .destructive) { delete(recipe) }
+                Button("Cancel", role: .cancel) { pendingDelete = nil }
+            } message: { recipe in
+                Text("\"\(recipe.title)\" will be permanently removed.")
+            }
         }
+    }
+
+    private func delete(_ recipe: Recipe) {
+        modelContext.delete(recipe)   // cascade rules remove its ingredients & steps
+        pendingDelete = nil
     }
 
     // MARK: - Content
@@ -65,6 +84,13 @@ struct RecipeLibraryView: View {
                         RecipeCard(recipe: recipe)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            pendingDelete = recipe
+                        } label: {
+                            Label("Delete Recipe", systemImage: "trash")
+                        }
+                    }
                 }
             }
             .padding(Spacing.md)
@@ -126,6 +152,29 @@ struct RecipeLibraryView: View {
     }
 }
 
+// MARK: - Source display
+
+/// Human-facing label + SF Symbol for a recipe's stored `sourceType`.
+enum RecipeSourceStyle {
+    static func label(_ sourceType: String) -> String {
+        switch sourceType.lowercased() {
+        case "tiktok":    return "TikTok"
+        case "instagram": return "Instagram"
+        case "youtube":   return "YouTube"
+        case "manual":    return "Manual"
+        default:          return "Web"
+        }
+    }
+
+    static func symbol(_ sourceType: String) -> String {
+        switch sourceType.lowercased() {
+        case "tiktok", "instagram", "youtube": return "play.rectangle.fill"
+        case "manual":                          return "square.and.pencil"
+        default:                                return "globe"
+        }
+    }
+}
+
 // MARK: - Recipe Card
 
 struct RecipeCard: View {
@@ -133,6 +182,21 @@ struct RecipeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
+            // Recipe photo (when we captured one at import)
+            if let image = URLRouter.safeExternalURL(recipe.thumbnailURL) {
+                AsyncImage(url: image) { phase in
+                    if let img = phase.image {
+                        img.resizable().scaledToFill()
+                    } else {
+                        Color.scBorder
+                    }
+                }
+                .frame(height: 84)
+                .frame(maxWidth: .infinity)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
             // Source badge + confidence dot
             HStack {
                 sourceTypeBadge
@@ -174,7 +238,7 @@ struct RecipeCard: View {
     }
 
     private var sourceTypeBadge: some View {
-        Text(recipe.sourceType.uppercased())
+        Label(RecipeSourceStyle.label(recipe.sourceType), systemImage: RecipeSourceStyle.symbol(recipe.sourceType))
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(Color.scTextSecondary)
             .padding(.horizontal, Spacing.xs)
@@ -215,12 +279,28 @@ struct RecipeDetailView: View {
     @State private var showCookMode = false
     @State private var showCompatibility = false
     @State private var unitMode: UnitMode = .original
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         ZStack {
             Color.scBackground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
+                    // Hero photo (when captured at import)
+                    if let image = URLRouter.safeExternalURL(recipe.thumbnailURL) {
+                        AsyncImage(url: image) { phase in
+                            if let img = phase.image {
+                                img.resizable().scaledToFill()
+                            } else {
+                                Color.scSurface
+                            }
+                        }
+                        .frame(height: 200)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
                     // Header
                     VStack(alignment: .leading, spacing: Spacing.xs) {
                         Text(recipe.title)
@@ -237,6 +317,16 @@ struct RecipeDetailView: View {
                                     .font(.scCaption)
                                     .foregroundStyle(Color.scTextSecondary)
                             }
+                        }
+                        // Source attribution + link back to the original.
+                        if let link = URLRouter.safeExternalURL(recipe.sourceURL) {
+                            Link(destination: link) {
+                                Label("View original on \(RecipeSourceStyle.label(recipe.sourceType))",
+                                      systemImage: RecipeSourceStyle.symbol(recipe.sourceType))
+                                    .font(.scCaption)
+                                    .foregroundStyle(Color.scAccent)
+                            }
+                            .padding(.top, Spacing.xs)
                         }
                     }
 
@@ -314,7 +404,31 @@ struct RecipeDetailView: View {
                             .foregroundStyle(Color.scAccent)
                     }
                 }
+                Menu {
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Delete Recipe", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(Color.scTextPrimary)
+                }
+                .accessibilityLabel("More actions")
             }
+        }
+        .confirmationDialog(
+            "Delete this recipe?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                modelContext.delete(recipe)   // cascade removes ingredients & steps
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("\"\(recipe.title)\" will be permanently removed.")
         }
         .fullScreenCover(isPresented: $showCookMode) {
             CookModeView(recipe: recipe)

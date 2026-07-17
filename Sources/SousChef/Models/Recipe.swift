@@ -7,6 +7,7 @@ final class Recipe {
     var title: String
     var sourceURL: String?
     var sourceType: String       // "web", "tiktok", "instagram", "youtube", "manual"
+    var thumbnailURL: String?    // recipe photo URL captured at import (optional → lightweight migration)
     var recipeYield: String?
     var prepTime: Int?           // seconds
     var cookTime: Int?           // seconds
