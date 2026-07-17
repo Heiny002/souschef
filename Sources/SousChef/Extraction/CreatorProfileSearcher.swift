@@ -125,7 +125,8 @@ enum CreatorProfileSearcher {
     }
 
     private static func fetchProfileLinks(handle: String) async -> (links: [ServerLink], realName: String?) {
-        guard let url = URL(string: "http://localhost:8000/find-creator-profile") else {
+        guard let base = BackendConfig.baseURL,
+              let url = URL(string: "\(base)/find-creator-profile") else {
             return ([], nil)
         }
         var request = URLRequest(url: url)

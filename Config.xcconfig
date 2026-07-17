@@ -13,4 +13,9 @@
 // when present — this must appear BEFORE the include (last assignment wins).
 ANTHROPIC_API_KEY =
 
+// Optional HTTPS base URL of the transcript/search backend (e.g. a deployed
+// FastAPI instance). Empty means: release builds skip those layers; DEBUG
+// falls back to http://localhost:8000 for local development.
+RECIPE_BACKEND_URL =
+
 #include? "Secrets.xcconfig"
