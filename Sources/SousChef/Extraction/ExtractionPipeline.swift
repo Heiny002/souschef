@@ -128,8 +128,7 @@ actor ExtractionPipeline {
         guard result.confidence < ConfidenceThreshold.accept else { return result }
 
         // Step 4: Layer 6 — LLM validation / fallback
-        guard let apiKey = Bundle.main.infoDictionary?["ANTHROPIC_API_KEY"] as? String,
-              !apiKey.isEmpty else {
+        guard let apiKey = APIKeyProvider.anthropicKey else {
             return result
         }
         let validator = TranscriptLLMValidator(apiKey: apiKey)
@@ -291,6 +290,18 @@ actor ExtractionPipeline {
     private func extractFromWebPage(urlString: String) async throws -> ExtractionResult {
         let html = try await fetcher.fetch(urlString: urlString)
         var result = extractFromHTML(html: html)
+
+        // Layer 4: LLM fallback (H13). The deterministic layers (1–3) run synchronously in
+        // extractFromHTML; the LLM call is async, so it lives here. Only invoked when those
+        // layers came up short AND a key is configured, and only adopted if it's more
+        // confident — so a well-structured page never pays for an LLM round-trip.
+        if result.confidence < ConfidenceThreshold.reject, let apiKey = APIKeyProvider.anthropicKey {
+            if let llm = try? await LLMExtractor(apiKey: apiKey).extract(html: html),
+               llm.confidence > result.confidence {
+                result = llm
+            }
+        }
+
         result.recipePageURL = urlString
         return result
     }
@@ -317,7 +328,8 @@ actor ExtractionPipeline {
             return layer3
         }
 
-        // Layer 4: LLM fallback — stub (SC-030)
+        // Layer 4 (LLM fallback) runs in the async `extractFromWebPage` when a key is
+        // configured — this synchronous chain only covers the deterministic layers.
 
         // Return best available result (highest confidence)
         return [layer1, layer2, layer3].max(by: { $0.confidence < $1.confidence }) ?? layer3
