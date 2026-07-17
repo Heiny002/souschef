@@ -286,6 +286,25 @@ struct RecipeDetailView: View {
             Color.scBackground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
+                    #if DEBUG
+                    // TEMPORARY diagnostic — shows exactly what was stored for this recipe.
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("DEBUG · stored provenance").font(.system(size: 11, weight: .bold, design: .monospaced))
+                        Text("sourceURL: \(recipe.sourceURL ?? "nil")")
+                        Text("thumbnailURL: \(recipe.thumbnailURL ?? "nil")")
+                        Text("sourceType: \(recipe.sourceType)")
+                        Text("method: \(recipe.extractionMethod) · conf \(String(format: "%.2f", recipe.extractionConfidence))")
+                        Text("safeURL(source): \(URLRouter.safeExternalURL(recipe.sourceURL) == nil ? "nil" : "ok")")
+                        Text("safeURL(thumb): \(URLRouter.safeExternalURL(recipe.thumbnailURL) == nil ? "nil" : "ok")")
+                    }
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.yellow)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.black.opacity(0.6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.yellow, lineWidth: 1))
+                    #endif
+
                     // Hero photo (when captured at import)
                     if let image = URLRouter.safeExternalURL(recipe.thumbnailURL) {
                         AsyncImage(url: image) { phase in
