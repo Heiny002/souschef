@@ -31,8 +31,8 @@ enum WebRecipeSearcher {
     // MARK: - Strategy 1: Server-Side Search
 
     private static func serverSearch(query: String) async -> [SearchResult]? {
-        let serverURL = "http://localhost:8000/search-recipe"
-        guard let url = URL(string: serverURL) else { return nil }
+        guard let base = BackendConfig.baseURL,
+              let url = URL(string: "\(base)/search-recipe") else { return nil }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

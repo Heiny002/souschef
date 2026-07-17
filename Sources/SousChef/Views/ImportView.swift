@@ -14,6 +14,9 @@ struct ImportView: View {
     @State private var statusText = ""  // SC-075: dynamic progress from bio link resolution
     @State private var showSimilarSheet = false
     @State private var directLinkText = ""  // user-pasted direct recipe URL on failure
+    /// In-flight import, cancelled when the sheet is dismissed — otherwise the whole
+    /// network + paid-LLM chain kept running invisibly (audit: no cancellation on dismiss).
+    @State private var importTask: Task<Void, Never>?
 
     enum ImportPhase: Equatable {
         case idle
@@ -102,6 +105,12 @@ struct ImportView: View {
                 }
             }
             .onAppear { detectClipboardURL() }
+            .onDisappear {
+                // Dismissing the sheet must abort the extraction chain — in-flight
+                // URLSession calls throw on cancellation, so the pipeline unwinds fast.
+                importTask?.cancel()
+                importTask = nil
+            }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 detectClipboardURL()
             }
@@ -252,7 +261,7 @@ struct ImportView: View {
                 phase = .idle
                 extractionResult = nil
                 directLinkText = ""
-                Task { await runImport() }
+                importTask = Task { await runImport() }
             } label: {
                 Label("Try This Link", systemImage: "arrow.down.circle.fill")
                     .font(.scLabel)
@@ -317,7 +326,7 @@ struct ImportView: View {
 
     private var importButton: some View {
         Button {
-            Task { await runImport() }
+            importTask = Task { await runImport() }
         } label: {
             Group {
                 if phase == .fetching || phase == .extracting {
@@ -425,6 +434,7 @@ struct ImportView: View {
                     if self.phase == .fetching { self.phase = .extracting }
                 }
             }
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 if result.isViable {
                     extractionResult = result
@@ -437,6 +447,7 @@ struct ImportView: View {
                 }
             }
         } catch {
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 phase = .error
                 errorMessage = friendlyError(error)

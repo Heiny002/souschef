@@ -201,40 +201,39 @@ actor ExtractionPipeline {
 
             // Stage A2: General dish search — "dishname recipe" (no creator constraint)
             // Second attempt to find THE specific recipe before accepting defeat.
-            // Reuse these results for Stage B to avoid a redundant search call.
+            // Each candidate's extraction is CACHED for Stage B.
             let genericQuery = buildGenericQuery(title: result.title ?? titleHint, keywords: keywords)
-            var generalSearchResults: [WebRecipeSearcher.SearchResult] = []
+            var cachedExtractions: [ExtractionResult] = []
             if let query = genericQuery {
                 progress?("Searching more broadly…")
-                generalSearchResults = await WebRecipeSearcher.search(query: query)
+                let generalSearchResults = await WebRecipeSearcher.search(query: query)
                 for candidate in generalSearchResults {
-                    if let webResult = try? await extractFromWebPage(urlString: candidate.url),
-                       webResult.isViable {
+                    guard let webResult = try? await extractFromWebPage(urlString: candidate.url) else { continue }
+                    if webResult.isViable {
                         var substituteResult = webResult
                         substituteResult.isSubstitute = true
                         substituteResult.originalSourceURL = urlString
                         return substituteResult
                     }
+                    cachedExtractions.append(webResult)
                 }
             }
 
-            // Stage B: Collect up to 2 similar recipes from general results for the failure UI.
-            // Re-extract from the same candidates (already fetched above) — no extra network call.
-            if !generalSearchResults.isEmpty {
-                progress?("Finding similar recipes…")
-                var alternatives: [ExtractionResult] = []
-                for candidate in generalSearchResults {
-                    if let webResult = try? await extractFromWebPage(urlString: candidate.url),
-                       webResult.isViable {
-                        var alt = webResult
-                        alt.isSubstitute = true
-                        alt.originalSourceURL = urlString
-                        alternatives.append(alt)
-                        if alternatives.count >= 2 { break }
-                    }
-                }
-                result.alternatives = alternatives
+            // Stage B: Similar recipes for the failure UI, from the CACHED A2 extractions.
+            // This stage only runs when no A2 candidate passed `isViable` — so re-fetching
+            // the same URLs and applying the same bar (the old code) could never produce a
+            // result and just re-downloaded up to 3 pages (H14). A partial extraction
+            // (title + some ingredients) is still a useful preview.
+            var alternatives: [ExtractionResult] = []
+            for webResult in cachedExtractions
+            where webResult.title != nil && !webResult.ingredients.isEmpty {
+                var alt = webResult
+                alt.isSubstitute = true
+                alt.originalSourceURL = urlString
+                alternatives.append(alt)
+                if alternatives.count >= 2 { break }
             }
+            result.alternatives = alternatives
 
             // Annotate the failed result for the failure UI
             result.captionPreview = allCaptionText.isEmpty ? nil : String(allCaptionText.prefix(200))

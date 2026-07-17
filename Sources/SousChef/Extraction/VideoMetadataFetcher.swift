@@ -145,8 +145,17 @@ actor VideoMetadataFetcher {
     // MARK: - Private
 
     private func fetchOEmbed(endpoint: String, videoURL: String) async throws -> VideoMetadata {
-        let encodedURL = videoURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? videoURL
-        guard let url = URL(string: "\(endpoint)?url=\(encodedURL)&format=json") else {
+        // URLComponents percent-encodes the value properly. The old manual encoding used
+        // .urlQueryAllowed, which leaves "&" unescaped — a video URL containing query
+        // params ("watch?v=…&t=30") was truncated at the first "&" server-side (audit medium).
+        guard var components = URLComponents(string: endpoint) else {
+            throw VideoMetadataError.invalidURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "url", value: videoURL),
+            URLQueryItem(name: "format", value: "json"),
+        ]
+        guard let url = components.url else {
             throw VideoMetadataError.invalidURL
         }
 
