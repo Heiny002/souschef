@@ -31,6 +31,14 @@ enum StepSequencer {
             return steps
         }
 
+        // If ANY step between the preheat and the wait uses the oven (par-bake, toast,
+        // "bake the crust"), the preheat must stay where it is — moving it would put that
+        // intermediate bake in a cold oven, exactly the hazard this module exists to
+        // avoid (H11).
+        if steps[(preheatIdx + 1)..<waitIdx].contains(where: isOvenUse) {
+            return steps
+        }
+
         // Already immediately before the wait → oven and downtime already overlap.
         if preheatIdx == waitIdx - 1 { return steps }
 
@@ -45,11 +53,15 @@ enum StepSequencer {
     // MARK: - Classification
 
     /// Hands-off waiting where the cook does nothing but let time pass.
-    /// Must carry a real duration (≥ 5 min) so a preheat can usefully overlap it.
+    /// Must carry a real duration (≥ 5 min) so a preheat can usefully overlap it, and be
+    /// short enough (≤ 1 h) that running the oven through it makes sense — an overnight
+    /// marinade must NOT pull the preheat to its start and leave the oven on for hours
+    /// (audit medium).
     static func isPassiveDowntime(_ step: String) -> Bool {
         let t = step.lowercased()
         guard passiveKeywords.contains(where: { t.contains($0) }) else { return false }
-        guard let timer = TimerDetector.detect(in: step), timer.seconds >= 300 else { return false }
+        guard let timer = TimerDetector.detect(in: step),
+              timer.seconds >= 300, timer.seconds <= 3600 else { return false }
         return true
     }
 
@@ -73,6 +85,7 @@ enum StepSequencer {
     static func isOvenUse(_ step: String) -> Bool {
         let t = step.lowercased()
         return t.contains("bake") || t.contains("roast") || t.contains("broil")
+            || t.contains("toast") || t.contains("in the oven") || t.contains("into the oven")
     }
 
     // Substrings, not whole words, so they catch inflections:

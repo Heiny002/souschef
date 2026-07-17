@@ -230,16 +230,10 @@ struct TranscriptExtractor {
     }
 
     private func extractTime(from text: String, labels: [String]) -> Int? {
+        // Shared with HeuristicExtractor — handles compound "1 hr 30 min" (previously
+        // truncated to the first component) and clamps untrusted values.
         for label in labels {
-            let pattern = "\(NSRegularExpression.escapedPattern(for: label))\\s*(?:for\\s*)?(\\d+(?:\\.\\d+)?)\\s*(hr?s?|hour?s?|min(?:ute)?s?)"
-            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-               let numRange = Range(match.range(at: 1), in: text),
-               let unitRange = Range(match.range(at: 2), in: text),
-               let value = Double(text[numRange]) {
-                let unit = text[unitRange].lowercased()
-                return Int(unit.hasPrefix("h") ? value * 3600 : value * 60)
-            }
+            if let secs = DurationTextParser.seconds(in: text, after: label) { return secs }
         }
         return nil
     }

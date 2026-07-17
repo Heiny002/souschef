@@ -72,11 +72,22 @@ struct IngredientParser {
         "dozen": 12, "handful": 1
     ]
 
+    /// Typographic dashes between digits → ASCII hyphen, so "2–3 cloves" (en dash, as
+    /// recipe plugins emit) parses as a range exactly like "2-3" (audit medium).
+    private static let typographicRangeDash = try? NSRegularExpression(
+        pattern: #"(?<=\d)\s*[–—−]\s*(?=\d)"#
+    )
+
     private func extractQuantity(from text: String) -> (String?, String) {
         var s = text
         // Normalize unicode fractions
         for (char, replacement) in Self.unicodeFractions {
             s = s.replacingOccurrences(of: String(char), with: " " + replacement + " ")
+        }
+        if let dashRegex = Self.typographicRangeDash {
+            s = dashRegex.stringByReplacingMatches(
+                in: s, range: NSRange(s.startIndex..., in: s), withTemplate: "-"
+            )
         }
         s = s.trimmingCharacters(in: .whitespaces)
 

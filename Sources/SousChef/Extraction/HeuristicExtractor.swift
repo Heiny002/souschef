@@ -58,10 +58,17 @@ struct HeuristicExtractor {
            let content = try? meta.attr("content"), !content.isEmpty {
             return content
         }
-        // Priority 4: <title> tag (strip site name after " - " or " | ")
+        // Priority 4: <title> tag (strip site name after " | " or " - ").
+        // Split ONLY on space-delimited separators — a CharacterSet split on "|-" cut at
+        // every intra-word hyphen, truncating "Bang-Bang Shrimp | Food Blog" to "Bang" (H17).
         if let title = try? doc.title(), !title.isEmpty {
-            let parts = title.components(separatedBy: CharacterSet(charactersIn: "|-"))
-            return parts.first?.trimmingCharacters(in: .whitespaces)
+            for separator in [" | ", " - ", " – ", " — "] {
+                if let first = title.components(separatedBy: separator).first, first != title {
+                    let trimmed = first.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty { return trimmed }
+                }
+            }
+            return title.trimmingCharacters(in: .whitespaces)
         }
         return nil
     }
@@ -87,9 +94,11 @@ struct HeuristicExtractor {
             }
         }
 
-        // Method 2: any <li> whose text matches quantity-unit-food pattern
+        // Method 2: any <li> whose text matches quantity-unit-food pattern.
+        // Leading char class includes the unicode fractions — "½ cup flour" previously
+        // required an ASCII digit first and was silently missed (audit medium).
         if let allLis = try? doc.select("li") {
-            let quantityPattern = #"^\s*(\d[\d\s/½¼¾⅓⅔⅛⅜⅝⅞]*|[a-z]+)\s+(tbsp|tsp|cup|oz|lb|g|kg|ml|can|bunch|clove|sprig|pinch|dash|tablespoon|teaspoon|ounce|pound|gram)"#
+            let quantityPattern = #"^\s*([\d½¼¾⅓⅔⅛⅜⅝⅞][\d\s/½¼¾⅓⅔⅛⅜⅝⅞]*|[a-z]+)\s+(tbsp|tsp|cup|oz|lb|g|kg|ml|can|bunch|clove|sprig|pinch|dash|tablespoon|teaspoon|ounce|pound|gram)"#
             let regex = try? NSRegularExpression(pattern: quantityPattern, options: .caseInsensitive)
             let matches = allLis.filter { el in
                 guard let text = try? el.text() else { return false }
@@ -183,15 +192,10 @@ struct HeuristicExtractor {
     }
 
     private func timeMinutes(from text: String, labels: [String]) -> Int? {
+        // Shared parser handles compound values ("1 hr 30 min") and decimals — the old
+        // inline regex stopped at the first number+unit, reading 90 minutes as 60.
         for label in labels {
-            let pattern = "\(NSRegularExpression.escapedPattern(for: label))\\s*:?\\s*(\\d+)\\s*(hr?s?|hour?s?|min(?:ute)?s?)"
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-                  let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { continue }
-            guard let numRange = Range(match.range(at: 1), in: text),
-                  let unitRange = Range(match.range(at: 2), in: text),
-                  let value = Int(text[numRange]) else { continue }
-            let unit = text[unitRange].lowercased()
-            return unit.hasPrefix("h") ? value * 3600 : value * 60
+            if let secs = DurationTextParser.seconds(in: text, after: label) { return secs }
         }
         return nil
     }
