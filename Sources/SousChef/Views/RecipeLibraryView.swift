@@ -34,7 +34,10 @@ struct RecipeLibraryView: View {
         NavigationStack {
             ZStack {
                 Color.scBackground.ignoresSafeArea()
-                content
+                VStack(spacing: 0) {
+                    buildStamp
+                    content
+                }
             }
             .navigationTitle("Library")
             .toolbarBackground(Color.scBackground, for: .navigationBar)
@@ -63,6 +66,25 @@ struct RecipeLibraryView: View {
     private func delete(_ recipe: Recipe) {
         modelContext.delete(recipe)   // cascade rules remove its ingredients & steps
         pendingDelete = nil
+    }
+
+    // MARK: - Build stamp (testing aid)
+
+    /// Shows when the running binary was compiled, so it's obvious at a glance whether
+    /// this install includes the latest changes. Remove (or gate behind DEBUG) once the
+    /// testing phase is over.
+    private var buildStamp: some View {
+        HStack(spacing: Spacing.xs) {
+            Image(systemName: "hammer.fill")
+                .font(.system(size: 9))
+            Text(BuildInfo.stamp)
+        }
+        .font(.system(size: 11, weight: .medium, design: .monospaced))
+        .foregroundStyle(Color.scTextSecondary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+        .background(Color.scSurface)
+        .accessibilityLabel("App built \(BuildInfo.stamp)")
     }
 
     // MARK: - Content
@@ -150,6 +172,29 @@ struct RecipeLibraryView: View {
             .accessibilityLabel("Import recipe")
         }
     }
+}
+
+// MARK: - Build info
+
+/// The moment this binary was compiled, read from the executable's file timestamp —
+/// updates automatically on every build with no script or manual bump. Rebuilding after
+/// `git pull` always refreshes it, so a stale stamp means a stale build.
+enum BuildInfo {
+    static let buildDate: Date? = {
+        guard let url = Bundle.main.executableURL,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return nil
+        }
+        return attrs[.modificationDate] as? Date
+    }()
+
+    static let stamp: String = {
+        guard let date = buildDate else { return "Build date unavailable" }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return "Build \(formatter.string(from: date))"
+    }()
 }
 
 // MARK: - Source display
