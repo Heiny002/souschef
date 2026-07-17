@@ -28,6 +28,14 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
     private let audioEngine = AVAudioEngine()
     private var lastCommandDate: Date = .distantPast
 
+    /// True while listening is *wanted* — i.e. it should auto-restart when a recognition
+    /// task ends on its own (server-based requests die after ~60s). Cleared by an explicit
+    /// stopListening() so deliberate stops don't trigger a restart (H7).
+    private var autoRestartWanted = false
+    /// Consecutive spontaneous endings without a successful transcript — drives backoff.
+    private var restartAttempts = 0
+    private var restartWorkItem: DispatchWorkItem?
+
     // MARK: - Init
 
     override init() {
@@ -56,9 +64,7 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
     }
 
     private nonisolated static func requestMicrophonePermission() async -> Bool {
-        await withCheckedContinuation { cont in
-            AVAudioSession.sharedInstance().requestRecordPermission { cont.resume(returning: $0) }
-        }
+        await AVAudioApplication.requestRecordPermission()
     }
 
     // MARK: - TTS
@@ -90,11 +96,18 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
     func startListening() {
         guard isAvailable, !isListening, !isSpeaking else { return }
         guard let recognizer, recognizer.isAvailable else { return }
+        autoRestartWanted = true
         setAudioSessionForRecord()
 
         do {
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
+            // On-device removes the ~60s server limit AND keeps kitchen audio off
+            // Apple's servers (audit privacy medium). Server-based recognition remains
+            // the fallback where unsupported — the auto-restart below covers its limit.
+            if recognizer.supportsOnDeviceRecognition {
+                request.requiresOnDeviceRecognition = true
+            }
             recognitionRequest = request
 
             let inputNode = audioEngine.inputNode
@@ -109,14 +122,20 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
             recognitionTask = Self.beginRecognition(
                 recognizer: recognizer, request: request,
                 onTranscript: { [weak self] text in self?.handleTranscript(text) },
-                onFinished: { [weak self] in self?.isListening = false }
+                onFinished: { [weak self] in self?.recognitionEnded() }
             )
         } catch {
             isListening = false
+            recognitionEnded()
         }
     }
 
     func stopListening() {
+        // Clear the restart intent FIRST — cancelling the task below fires its completion
+        // handler, which must not schedule a restart after a deliberate stop.
+        autoRestartWanted = false
+        restartWorkItem?.cancel()
+        restartWorkItem = nil
         guard isListening else { return }
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -125,6 +144,28 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
         recognitionRequest = nil
         recognitionTask = nil
         isListening = false
+    }
+
+    /// A recognition task ended (server ~60s limit, error, or final result) without the
+    /// user asking it to. Tear down and restart with capped exponential backoff so voice
+    /// commands keep working through a long simmer instead of silently dying (H7).
+    private func recognitionEnded() {
+        guard autoRestartWanted else { return }   // deliberate stop — no restart
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        recognitionRequest = nil
+        recognitionTask = nil
+        isListening = false
+
+        restartAttempts += 1
+        let delay = min(0.5 * pow(2.0, Double(restartAttempts - 1)), 8.0)
+        restartWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.autoRestartWanted, !self.isListening, !self.isSpeaking else { return }
+            self.startListening()
+        }
+        restartWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     /// nonisolated static: recognitionTask callback fires on an internal Speech queue.
@@ -170,6 +211,7 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
     ]
 
     private func handleTranscript(_ text: String) {
+        restartAttempts = 0   // recognition is demonstrably working — reset the backoff
         guard Date().timeIntervalSince(lastCommandDate) > 2.0 else { return }
         for (keywords, command) in commandTable {
             if keywords.contains(where: { text.contains($0) }) {
@@ -195,6 +237,9 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
 
     private func setAudioSessionForRecord() {
         let s = AVAudioSession.sharedInstance()
+        // .allowBluetooth is deprecated-renamed to .allowBluetoothHFP on newer SDKs, but
+        // the new name doesn't exist in Xcode 16.x (CI). Keep the old spelling until the
+        // minimum toolchain has the rename — it compiles everywhere.
         try? s.setCategory(.playAndRecord, mode: .default,
                             options: [.defaultToSpeaker, .allowBluetooth])
         try? s.setActive(true)
