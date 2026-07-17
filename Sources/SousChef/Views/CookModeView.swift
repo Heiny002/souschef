@@ -7,11 +7,14 @@ import SwiftData
 struct CookModeView: View {
     let recipe: Recipe
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     // Voice + timer
     @StateObject private var voice = CookVoiceController()
     @StateObject private var timerState = CookTimerState()
     @State private var voiceEnabled = false
+    /// A new step's timer waiting on user confirmation because a timer is already running.
+    @State private var pendingTimerReplace: DetectedTimer?
 
     // Navigation
     @State private var currentIndex = 0
@@ -51,8 +54,32 @@ struct CookModeView: View {
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+            voice.onCommand = nil   // break the voice → closure → view-state → voice cycle
             voice.deactivate()
             timerState.stop()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Returning from lock/background: snap the countdown back to wall-clock truth
+            // immediately instead of waiting for the next ticker fire.
+            if phase == .active { timerState.reconcile() }
+        }
+        .confirmationDialog(
+            "Replace the running timer?",
+            isPresented: Binding(
+                get: { pendingTimerReplace != nil },
+                set: { if !$0 { pendingTimerReplace = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingTimerReplace
+        ) { t in
+            Button("Start \(t.label) timer", role: .destructive) {
+                timerState.configure(from: t)
+                timerState.start()
+                pendingTimerReplace = nil
+            }
+            Button("Keep current timer", role: .cancel) { pendingTimerReplace = nil }
+        } message: { _ in
+            Text("Your current timer is still running — starting this step's timer will end it.")
         }
         .sheet(isPresented: $showIngredients) {
             ingredientsSheet
@@ -101,12 +128,17 @@ struct CookModeView: View {
     }
 
     private func advance(by delta: Int) {
-        timerState.stop()
+        // A RUNNING timer survives navigation — it stays pinned at the top so you can
+        // simmer on step 4 while chopping on step 5 (H8). Only a timer that finished or
+        // was configured but never started gets cleared for the incoming step.
+        if !timerState.isRunning {
+            timerState.stop()
+        }
         voice.stopSpeaking()
         withAnimation(.easeInOut(duration: 0.25)) { currentIndex += delta }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             speakCurrent()
-            if let t = current?.detectedTimer {
+            if let t = current?.detectedTimer, !timerState.isConfigured {
                 timerState.configure(from: t)
             }
         }
@@ -126,12 +158,29 @@ struct CookModeView: View {
 
     private func handleVoiceCommand(_ cmd: CookVoiceController.VoiceCommand) {
         switch cmd {
-        case .next:          goNext()
-        case .back:          goBack()
-        case .startTimer:    timerState.start()
-        case .stopTimer:     timerState.pause()
-        case .repeatStep:    speakCurrent()
-        case .showIngredients: showIngredients = true
+        case .next:
+            // A misheard "next" on the last step used to instantly exit Cook Mode
+            // (audit UI/UX medium). Voice never dismisses — that stays a deliberate tap.
+            if isLast {
+                voice.speak("This is the last step. Tap Done when you're finished.")
+            } else {
+                goNext()
+            }
+        case .back:
+            goBack()
+        case .startTimer:
+            // Was a no-op when the step's timer hadn't been configured yet (audit medium):
+            // configure it from the current step on demand.
+            if !timerState.isConfigured, let t = current?.detectedTimer {
+                timerState.configure(from: t)
+            }
+            timerState.start()
+        case .stopTimer:
+            timerState.pause()
+        case .repeatStep:
+            speakCurrent()
+        case .showIngredients:
+            showIngredients = true
         }
     }
 
@@ -179,8 +228,11 @@ struct CookModeView: View {
 
                 Spacer(minLength: Spacing.xl)
 
-                // "Start Timer" prompt if step has a timer but it's not running
-                if let t = current?.detectedTimer, !timerState.isConfigured {
+                // "Start Timer" prompt if this step has a timer that isn't the one shown.
+                // With no timer configured it starts directly; with a *different* timer
+                // still running it asks before replacing (H8 — never silently kill one).
+                if let t = current?.detectedTimer,
+                   !timerState.isConfigured || (timerState.isRunning && timerState.label != t.label) {
                     timerPrompt(t)
                         .padding(.horizontal, Spacing.md)
                 }
@@ -270,8 +322,12 @@ struct CookModeView: View {
 
     private func timerPrompt(_ t: DetectedTimer) -> some View {
         Button {
-            timerState.configure(from: t)
-            timerState.start()
+            if timerState.isRunning {
+                pendingTimerReplace = t   // confirm before ending the running timer
+            } else {
+                timerState.configure(from: t)
+                timerState.start()
+            }
         } label: {
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "timer")
