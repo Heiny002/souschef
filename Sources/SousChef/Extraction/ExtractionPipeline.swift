@@ -324,7 +324,7 @@ actor ExtractionPipeline {
     }
 
     /// Merge earlier-layer partial results into a later-layer result (fill gaps only).
-    private func merge(base: ExtractionResult, onto target: ExtractionResult) -> ExtractionResult {
+    func merge(base: ExtractionResult, onto target: ExtractionResult) -> ExtractionResult {
         var result = target
         if result.title == nil { result.title = base.title }
         if result.recipeYield == nil { result.recipeYield = base.recipeYield }
@@ -334,6 +334,12 @@ actor ExtractionPipeline {
         if result.ingredients.isEmpty { result.ingredients = base.ingredients }
         if result.steps.isEmpty { result.steps = base.steps }
         if result.appliances.isEmpty { result.appliances = base.appliances }
+        // Carry provenance/description too — otherwise the recipe photo (parsed from the
+        // Schema.org `image` field into `thumbnailURL`) and the description are silently
+        // dropped whenever a lower layer (Microdata/Heuristic, which don't parse an image)
+        // produces the final result, and the saved recipe ends up with no photo.
+        if result.thumbnailURL == nil { result.thumbnailURL = base.thumbnailURL }
+        if result.description == nil { result.description = base.description }
         return result
     }
 

@@ -50,4 +50,22 @@ final class ProvenanceTests: XCTestCase {
         XCTAssertEqual(fetched.first?.thumbnailURL, "https://example.com/tacos.jpg")
         XCTAssertEqual(fetched.first?.sourceType, "tiktok")
     }
+
+    /// The recipe photo (and description) are parsed only by the Schema.org layer. When a
+    /// lower layer wins the final result, the merge must still carry them forward, or the
+    /// saved recipe ends up with no photo even though the page had one.
+    func testMergeCarriesPhotoAndDescription() async {
+        let pipeline = ExtractionPipeline()
+
+        var schema = ExtractionResult(extractionMethod: "schema-org-jsonld")
+        schema.thumbnailURL = "https://example.com/photo.jpg"
+        schema.description = "A classic."
+
+        var heuristic = ExtractionResult(extractionMethod: "heuristic")
+        heuristic.ingredients = [RawIngredient(text: "1 cup flour")]  // no image/description
+
+        let merged = await pipeline.merge(base: schema, onto: heuristic)
+        XCTAssertEqual(merged.thumbnailURL, "https://example.com/photo.jpg")
+        XCTAssertEqual(merged.description, "A classic.")
+    }
 }
