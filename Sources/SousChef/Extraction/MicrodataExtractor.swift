@@ -70,8 +70,14 @@ struct MicrodataExtractor {
 
     private func isoDuration(_ root: Element, _ prop: String) -> Int? {
         guard let el = try? root.select("[itemprop=\(prop)]").first() else { return nil }
-        // Prefer datetime attribute (standard microdata), fallback to text
-        let value = (try? el.attr("datetime")) ?? (try? el.attr("content")) ?? (try? el.text()) ?? ""
+        // Prefer datetime (standard microdata), then content, then the element text.
+        // SwiftSoup's attr() returns "" (not nil) for a missing attribute, so a `??` chain
+        // stopped at the first candidate and silently dropped times on the very common
+        // `<time itemprop="prepTime" content="PT15M">15 minutes</time>` markup (H16).
+        let candidates = [try? el.attr("datetime"), try? el.attr("content"), try? el.text()]
+        guard let value = candidates.compactMap({ $0 }).first(where: { !$0.isEmpty }) else {
+            return nil
+        }
         return ISO8601DurationParser.seconds(from: value)
     }
 

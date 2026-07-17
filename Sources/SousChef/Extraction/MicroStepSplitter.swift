@@ -59,17 +59,31 @@ enum MicroStepSplitter {
         // Everything after the verb
         let remainder = words.dropFirst().joined(separator: " ")
 
-        // Parse "X, Y, and Z" style object list
-        let objects = parseObjectList(remainder)
-        guard objects.count >= 3 else { return [trimmed] }  // Only expand 3+ item lists
+        // Parse "X, Y, and Z" style object list. nil ⇒ some part didn't look like a
+        // simple object — keep the sentence intact. Losing a split is safe; dropping an
+        // ingredient or fabricating a step ("Add cook until fragrant.") is not (H10).
+        guard let objects = parseObjectList(remainder), objects.count >= 3 else {
+            return [trimmed]
+        }
 
         return objects.map { obj in
             capitalizeAndTerminate("\(rawVerb) \(obj)")
         }
     }
 
+    /// Words that mark a part as a trailing instruction clause, not an object —
+    /// "…onion, garlic, and cook until fragrant, about 2 minutes."
+    private static let clauseMarkers: Set<String> = [
+        "cook", "stir", "simmer", "sauté", "saute", "heat", "bring", "let", "cover",
+        "reduce", "season", "serve", "bake", "boil", "fry", "mix", "continue", "repeat",
+        "set", "remove", "transfer", "add", "about", "until", "then",
+    ]
+
     /// Parses "X, Y, and Z" or "X and Y and Z" into ["X", "Y", "Z"].
-    private static func parseObjectList(_ text: String) -> [String] {
+    /// Returns nil — meaning "don't split at all" — if ANY part fails the simple-object
+    /// check. The old version silently *dropped* failing parts and split anyway, deleting
+    /// instruction content ("…and the softened butter cut into cubes" vanished).
+    private static func parseObjectList(_ text: String) -> [String]? {
         var s = text
         if s.hasSuffix(".") { s = String(s.dropLast()) }
 
@@ -84,15 +98,28 @@ enum MicroStepSplitter {
         } else if s.contains(" and ") {
             parts = s.components(separatedBy: " and ")
         } else {
-            return []
+            return nil
         }
 
-        return parts
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { part in
-                let wordCount = part.split(separator: " ").count
-                return !part.isEmpty && wordCount <= 4  // Reject long phrases — they're not simple objects
-            }
+        let trimmedParts = parts.map { $0.trimmingCharacters(in: .whitespaces) }
+        for part in trimmedParts where !isSimpleObject(part) {
+            return nil   // one bad part poisons the whole split
+        }
+        return trimmedParts
+    }
+
+    /// A short noun phrase like "the carrots" / "softened butter" — not an instruction
+    /// clause, duration, or long phrase.
+    private static func isSimpleObject(_ part: String) -> Bool {
+        guard !part.isEmpty else { return false }
+        let words = part.lowercased().split(separator: " ").map(String.init)
+        guard words.count <= 4 else { return false }
+        // A part that starts with (or contains) an instruction/duration marker is a
+        // clause, not an object — "cook until fragrant", "about 2 minutes".
+        guard let first = words.first else { return false }
+        if clauseMarkers.contains(first) { return false }
+        if words.contains("until") || words.contains("about") { return false }
+        return true
     }
 
     private static func capitalizeAndTerminate(_ s: String) -> String {

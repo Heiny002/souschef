@@ -92,6 +92,47 @@ final class StepSequencerTests: XCTestCase {
         XCTAssertEqual(StepSequencer.reorder(steps), steps)
     }
 
+    // MARK: - H11: never move a preheat past an intermediate oven step
+
+    func testParBakeKeepsPreheatBeforeFirstBake() {
+        // The crust bakes BETWEEN the preheat and the chill — moving the preheat after
+        // the crust bake would bake it in a cold oven (the exact audit hazard).
+        let steps = [
+            "Preheat the oven to 375°F.",
+            "Bake the crust for 10 minutes.",
+            "Chill the filling for 30 minutes.",
+            "Bake the pie for 25 minutes.",
+        ]
+        XCTAssertEqual(StepSequencer.reorder(steps), steps)
+    }
+
+    func testToastCountsAsOvenUse() {
+        let steps = [
+            "Preheat the oven to 350°F.",
+            "Toast the nuts in the oven until fragrant.",
+            "Chill the dough for 20 minutes.",
+            "Bake the cookies for 12 minutes.",
+        ]
+        XCTAssertEqual(StepSequencer.reorder(steps), steps)
+        XCTAssertTrue(StepSequencer.isOvenUse("Toast the nuts until fragrant."))
+        XCTAssertTrue(StepSequencer.isOvenUse("Place the dish in the oven."))
+    }
+
+    // MARK: - Long downtime must not become an oven-on window
+
+    func testOvernightMarinadeDoesNotAttractThePreheat() {
+        // Moving the preheat to the start of an 8-hour marinade would leave the oven
+        // running all night (audit medium) — long waits don't qualify for overlap.
+        let steps = [
+            "Preheat the oven to 425°F.",
+            "Whisk the marinade.",
+            "Marinate the chicken for 8 hours.",
+            "Roast for 45 minutes.",
+        ]
+        XCTAssertEqual(StepSequencer.reorder(steps), steps)
+        XCTAssertFalse(StepSequencer.isPassiveDowntime("Marinate the chicken for 8 hours."))
+    }
+
     // MARK: - Classification helpers
 
     func testIsPassiveDowntime() {

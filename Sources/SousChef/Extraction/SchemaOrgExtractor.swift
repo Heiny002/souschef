@@ -70,13 +70,10 @@ struct SchemaOrgExtractor {
         // Description
         result.description = string(from: dict, key: "description")?.htmlDecoded
 
-        // Yield
+        // Yield — sites emit a String, [String], or a bare number ("recipeYield": 4),
+        // which was previously dropped (audit medium).
         if let yieldVal = dict["recipeYield"] {
-            if let str = yieldVal as? String {
-                result.recipeYield = str
-            } else if let arr = yieldVal as? [String] {
-                result.recipeYield = arr.first
-            }
+            result.recipeYield = yieldString(from: yieldVal)
         }
 
         // Times
@@ -97,14 +94,23 @@ struct SchemaOrgExtractor {
             result.steps = parseInstructions(instructions)
         }
 
-        // Appliances (tools/supplies)
+        // Appliances: explicit schema.org `tool` entries UNION keyword detection —
+        // detection previously overwrote the explicit list, losing stand mixers /
+        // candy thermometers the site had declared outright (audit medium).
+        var appliances: [String] = []
         if let tools = dict["tool"] as? [Any] {
-            result.appliances = tools.compactMap { ($0 as? String)?.htmlDecoded }
+            appliances = tools.compactMap { tool -> String? in
+                if let str = tool as? String { return str.htmlDecoded }
+                if let obj = tool as? [String: Any] { return (obj["name"] as? String)?.htmlDecoded }
+                return nil
+            }
         }
-
-        // Appliance detection from ingredients + steps
         let textForAppliances = result.ingredients.map { $0.text } + result.steps.map { $0.text }
-        result.appliances = ApplianceDetector.detect(in: textForAppliances)
+        for detected in ApplianceDetector.detect(in: textForAppliances)
+        where !appliances.contains(where: { $0.caseInsensitiveCompare(detected) == .orderedSame }) {
+            appliances.append(detected)
+        }
+        result.appliances = appliances
 
         // Image / thumbnail — can be a String URL, ImageObject dict, or array of either
         if let imageVal = dict["image"] {
@@ -180,6 +186,19 @@ struct SchemaOrgExtractor {
         return dict[key] as? String
     }
 
+    /// recipeYield in the wild: "4 servings", ["4 servings", "4"], 4, 4.0.
+    private func yieldString(from value: Any) -> String? {
+        if let str = value as? String { return str.htmlDecoded }
+        if let arr = value as? [Any] {
+            return arr.compactMap { yieldString(from: $0) }.first
+        }
+        if let num = value as? NSNumber {
+            let d = num.doubleValue
+            return d == d.rounded() ? String(Int(d)) : String(d)
+        }
+        return nil
+    }
+
     private func duration(from dict: [String: Any], key: String) -> Int? {
         guard let val = dict[key] as? String else { return nil }
         return ISO8601DurationParser.seconds(from: val)
@@ -208,19 +227,20 @@ private extension String {
         s = s.replacingOccurrences(of: "&#39;",  with: "'")
         s = s.replacingOccurrences(of: "&apos;", with: "'")
         s = s.replacingOccurrences(of: "&nbsp;", with: " ")
-        // Numeric entities
-        let numericPattern = try? NSRegularExpression(pattern: "&#(\\d+);")
+        // Numeric entities — decimal (&#233;) AND hex (&#xe9; / &#X27;), which were
+        // previously shown verbatim in titles/ingredients (audit medium).
+        let numericPattern = try? NSRegularExpression(pattern: "&#([xX])?([0-9a-fA-F]+);")
         let range = NSRange(s.startIndex..., in: s)
         if let matches = numericPattern?.matches(in: s, range: range) {
             for match in matches.reversed() {
-                if let codeRange = Range(match.range(at: 1), in: s),
-                   let code = UInt32(s[codeRange]),
-                   let scalar = Unicode.Scalar(code) {
-                    let char = String(scalar)
-                    if let fullRange = Range(match.range, in: s) {
-                        s.replaceSubrange(fullRange, with: char)
-                    }
-                }
+                guard let codeRange = Range(match.range(at: 2), in: s),
+                      let fullRange = Range(match.range, in: s) else { continue }
+                let isHex = match.range(at: 1).location != NSNotFound
+                // A decimal entity must be all digits; [0-9a-fA-F] in the pattern is
+                // for the hex case ("&#abc;" without x is left as-is).
+                guard let code = UInt32(s[codeRange], radix: isHex ? 16 : 10),
+                      let scalar = Unicode.Scalar(code) else { continue }
+                s.replaceSubrange(fullRange, with: String(scalar))
             }
         }
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
