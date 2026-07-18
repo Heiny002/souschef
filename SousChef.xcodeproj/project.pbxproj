@@ -419,6 +419,7 @@
 				0662769F6D10B1A6BC75E25B /* Sources */,
 				9DFBCB4930023E4E0095B00D /* Resources */,
 				EF71425111A83FBF743F57C6 /* Frameworks */,
+				FEED0000000000000000CE01 /* Stamp commit info */,
 			);
 			buildRules = (
 			);
@@ -482,6 +483,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		FEED0000000000000000CE01 /* Stamp commit info */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Stamp commit info";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Bakes the current git commit date + hash into the app bundle (CommitInfo.json)\n# so the Library's version stamp shows when the CODE was last updated, independent\n# of when the binary happened to be compiled.\nINFO_PATH=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/CommitInfo.json\"\nCOMMIT_DATE=$(git -C \"${SRCROOT}\" log -1 --format=%cI 2>/dev/null || echo \"\")\nCOMMIT_HASH=$(git -C \"${SRCROOT}\" rev-parse --short HEAD 2>/dev/null || echo \"\")\nprintf '{\"commitDate\":\"%s\",\"commitHash\":\"%s\"}' \"${COMMIT_DATE}\" \"${COMMIT_HASH}\" > \"${INFO_PATH}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0662769F6D10B1A6BC75E25B /* Sources */ = {
