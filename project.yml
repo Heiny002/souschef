@@ -59,6 +59,17 @@ targets:
         Release:
           DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
           SWIFT_OPTIMIZATION_LEVEL: "-O"
+    postBuildScripts:
+      # Bakes the current git commit date + hash into the bundle (CommitInfo.json) so the
+      # Library's version stamp shows when the CODE was last updated. Runs on every build
+      # (no dependency analysis) — a stale stamp means a stale checkout.
+      - name: Stamp commit info
+        basedOnDependencyAnalysis: false
+        script: |
+          INFO_PATH="${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/CommitInfo.json"
+          COMMIT_DATE=$(git -C "${SRCROOT}" log -1 --format=%cI 2>/dev/null || echo "")
+          COMMIT_HASH=$(git -C "${SRCROOT}" rev-parse --short HEAD 2>/dev/null || echo "")
+          printf '{"commitDate":"%s","commitHash":"%s"}' "${COMMIT_DATE}" "${COMMIT_HASH}" > "${INFO_PATH}"
     entitlements:
       path: Sources/SousChef/SousChef.entitlements
     scheme:

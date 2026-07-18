@@ -176,24 +176,41 @@ struct RecipeLibraryView: View {
 
 // MARK: - Build info
 
-/// The moment this binary was compiled, read from the executable's file timestamp —
-/// updates automatically on every build with no script or manual bump. Rebuilding after
-/// `git pull` always refreshes it, so a stale stamp means a stale build.
+/// Identifies which CODE VERSION this install was built from.
+///
+/// The "Stamp commit info" build phase writes CommitInfo.json (last git commit date +
+/// short hash of the checkout) into the bundle on every build. That's what the stamp
+/// shows — "Updated <commit date> · <hash>" — so it answers "am I running the latest
+/// code?" regardless of when the binary happened to be compiled. Rebuilding without
+/// pulling keeps the old commit date, correctly revealing a stale checkout.
+///
+/// Fallback (no git available / script failed): the binary's compile time, labelled
+/// "Build …" so it can't be mistaken for a code-version date.
 enum BuildInfo {
-    static let buildDate: Date? = {
-        guard let url = Bundle.main.executableURL,
-              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else {
-            return nil
-        }
-        return attrs[.modificationDate] as? Date
-    }()
+    private struct CommitInfo: Decodable {
+        let commitDate: String
+        let commitHash: String
+    }
 
     static let stamp: String = {
-        guard let date = buildDate else { return "Build date unavailable" }
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
-        return "Build \(formatter.string(from: date))"
+
+        if let url = Bundle.main.url(forResource: "CommitInfo", withExtension: "json"),
+           let data = try? Data(contentsOf: url),
+           let info = try? JSONDecoder().decode(CommitInfo.self, from: data),
+           let date = ISO8601DateFormatter().date(from: info.commitDate) {
+            let hash = info.commitHash.isEmpty ? "" : " · \(info.commitHash)"
+            return "Updated \(formatter.string(from: date))\(hash)"
+        }
+
+        if let url = Bundle.main.executableURL,
+           let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let date = attrs[.modificationDate] as? Date {
+            return "Build \(formatter.string(from: date))"
+        }
+        return "Version unavailable"
     }()
 }
 
