@@ -3,22 +3,24 @@ import SwiftData
 
 /// Cook Mode — voice-first, full-screen step-by-step cooking interface.
 /// Features: TTS reads steps aloud, voice commands, micro-step splitting,
-/// smart timers with per-side support, pinned timer overlay.
+/// stackable smart timers with per-side support and completion guidance.
 struct CookModeView: View {
     let recipe: Recipe
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
-    // Voice + timer
+    // Voice + timers
     @StateObject private var voice = CookVoiceController()
-    @StateObject private var timerState = CookTimerState()
+    @StateObject private var timers = CookTimerStack()
     @State private var voiceEnabled = false
-    /// A new step's timer waiting on user confirmation because a timer is already running.
-    @State private var pendingTimerReplace: DetectedTimer?
 
     // Navigation
     @State private var currentIndex = 0
     @State private var showIngredients = false
+    /// Chip tapped → sheet showing that timer's step and controls.
+    @State private var selectedTimerID: UUID?
+    /// Voice "what timers do I have going?" → list of every timer.
+    @State private var showTimerList = false
 
     // Micro-steps built from recipe on appear
     private struct MicroStep {
@@ -45,6 +47,11 @@ struct CookModeView: View {
             } else {
                 cookInterface
             }
+
+            // "What to do next" overlay when a timer finishes.
+            if let done = timers.justCompleted {
+                completionOverlay(done)
+            }
         }
         .navigationBarHidden(true)
         .statusBarHidden(true)
@@ -56,33 +63,30 @@ struct CookModeView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             voice.onCommand = nil   // break the voice → closure → view-state → voice cycle
             voice.deactivate()
-            timerState.stop()
+            timers.stopAll()
         }
         .onChange(of: scenePhase) { _, phase in
-            // Returning from lock/background: snap the countdown back to wall-clock truth
-            // immediately instead of waiting for the next ticker fire.
-            if phase == .active { timerState.reconcile() }
+            // Returning from lock/background: snap every countdown back to wall-clock
+            // truth immediately instead of waiting for the next ticker fire.
+            if phase == .active { timers.reconcile() }
         }
-        .confirmationDialog(
-            "Replace the running timer?",
-            isPresented: Binding(
-                get: { pendingTimerReplace != nil },
-                set: { if !$0 { pendingTimerReplace = nil } }
-            ),
-            titleVisibility: .visible,
-            presenting: pendingTimerReplace
-        ) { t in
-            Button("Start \(t.label) timer", role: .destructive) {
-                timerState.configure(from: t)
-                timerState.start()
-                pendingTimerReplace = nil
+        .onChange(of: timers.justCompleted) { _, done in
+            // Speak the guidance so a cook with messy hands hears what to do next.
+            if let done, voiceEnabled {
+                voice.speak("Timer done. \(completionGuidance(for: done))")
             }
-            Button("Keep current timer", role: .cancel) { pendingTimerReplace = nil }
-        } message: { _ in
-            Text("Your current timer is still running — starting this step's timer will end it.")
         }
         .sheet(isPresented: $showIngredients) {
             ingredientsSheet
+        }
+        .sheet(isPresented: Binding(
+            get: { selectedTimerID != nil },
+            set: { if !$0 { selectedTimerID = nil } }
+        )) {
+            timerDetailSheet
+        }
+        .sheet(isPresented: $showTimerList) {
+            timerListSheet
         }
         .task {
             voiceEnabled = await voice.requestPermissions()
@@ -128,20 +132,64 @@ struct CookModeView: View {
     }
 
     private func advance(by delta: Int) {
-        // A RUNNING timer survives navigation — it stays pinned at the top so you can
-        // simmer on step 4 while chopping on step 5 (H8). Only a timer that finished or
-        // was configured but never started gets cleared for the incoming step.
-        if !timerState.isRunning {
-            timerState.stop()
-        }
+        // Timers are stackable and independent of navigation — the step-4 simmer keeps
+        // counting while you move on to chop on step 5 (H8). Nothing to stop here.
         voice.stopSpeaking()
         withAnimation(.easeInOut(duration: 0.25)) { currentIndex += delta }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             speakCurrent()
-            if let t = current?.detectedTimer, !timerState.isConfigured {
-                timerState.configure(from: t)
-            }
         }
+    }
+
+    private func jump(to stepIndex: Int) {
+        guard microSteps.indices.contains(stepIndex), stepIndex != currentIndex else { return }
+        voice.stopSpeaking()
+        withAnimation(.easeInOut(duration: 0.25)) { currentIndex = stepIndex }
+    }
+
+    // MARK: - Timer helpers
+
+    private func startTimer(_ t: DetectedTimer, forStep index: Int) {
+        guard microSteps.indices.contains(index) else { return }
+        timers.add(t, stepIndex: index, stepInstruction: microSteps[index].instruction)
+    }
+
+    /// What the cook should do now that this timer finished — the flip prompt for a
+    /// per-side timer, otherwise the step that follows the one the timer came from.
+    private func completionGuidance(for t: CookTimer) -> String {
+        if t.hasSidesLeft {
+            if let subject = TimerSubjectExtractor.subject(in: t.stepInstruction) {
+                return "Flip the \(subject) — ready for side \(t.sideNumber + 1) of \(t.totalSides)."
+            }
+            return "Time to flip — ready for side \(t.sideNumber + 1) of \(t.totalSides)."
+        }
+        if currentIndex > t.stepIndex {
+            return "Step \(t.stepIndex + 1) is done cooking — keep going with your current step."
+        }
+        let next = t.stepIndex + 1
+        if microSteps.indices.contains(next) {
+            return "Up next: \(microSteps[next].instruction)"
+        }
+        return "That was the last step — you're done cooking!"
+    }
+
+    /// Spoken answer to "what timers do I have going?"
+    private func timerSummary() -> String {
+        let running = timers.runningTimers
+        guard !running.isEmpty else { return "No timers are running." }
+        let parts = running.map { t in
+            let side = t.isPerSide ? ", side \(t.sideNumber) of \(t.totalSides)" : ""
+            return "\(t.label)\(side), with \(spokenDuration(t.secondsRemaining)) left"
+        }
+        if running.count == 1 { return "One timer going: \(parts[0])." }
+        return "\(running.count) timers going: \(parts.joined(separator: ". "))."
+    }
+
+    private func spokenDuration(_ seconds: Int) -> String {
+        let m = seconds / 60, s = seconds % 60
+        if m > 0 && s > 0 { return "\(m) minute\(m == 1 ? "" : "s") \(s) second\(s == 1 ? "" : "s")" }
+        if m > 0 { return "\(m) minute\(m == 1 ? "" : "s")" }
+        return "\(s) second\(s == 1 ? "" : "s")"
     }
 
     // MARK: - TTS
@@ -169,14 +217,26 @@ struct CookModeView: View {
         case .back:
             goBack()
         case .startTimer:
-            // Was a no-op when the step's timer hadn't been configured yet (audit medium):
-            // configure it from the current step on demand.
-            if !timerState.isConfigured, let t = current?.detectedTimer {
-                timerState.configure(from: t)
+            if let existing = timers.timer(forStep: currentIndex) {
+                // Paused → resume; completed per-side → next side.
+                if existing.didComplete && existing.hasSidesLeft {
+                    timers.startNextSide(id: existing.id)
+                } else {
+                    timers.start(id: existing.id)
+                }
+            } else if let t = current?.detectedTimer {
+                startTimer(t, forStep: currentIndex)
             }
-            timerState.start()
         case .stopTimer:
-            timerState.pause()
+            // Pause this step's timer if it has one, otherwise the most recent running one.
+            if let t = timers.timer(forStep: currentIndex), t.isRunning {
+                timers.pause(id: t.id)
+            } else if let last = timers.runningTimers.last {
+                timers.pause(id: last.id)
+            }
+        case .listTimers:
+            voice.speak(timerSummary())
+            if timers.hasTimers { showTimerList = true }
         case .repeatStep:
             speakCurrent()
         case .showIngredients:
@@ -204,10 +264,9 @@ struct CookModeView: View {
                     .padding(.horizontal, Spacing.md)
                     .padding(.top, geo.safeAreaInsets.top + Spacing.sm)
 
-                // Pinned timer strip
-                if timerState.isConfigured {
-                    pinnedTimer
-                        .padding(.horizontal, Spacing.md)
+                // Minimal timer chips — one per active timer, tap to see its step.
+                if timers.hasTimers {
+                    timerChips
                         .padding(.top, Spacing.sm)
                 }
 
@@ -228,11 +287,9 @@ struct CookModeView: View {
 
                 Spacer(minLength: Spacing.xl)
 
-                // "Start Timer" prompt if this step has a timer that isn't the one shown.
-                // With no timer configured it starts directly; with a *different* timer
-                // still running it asks before replacing (H8 — never silently kill one).
-                if let t = current?.detectedTimer,
-                   !timerState.isConfigured || (timerState.isRunning && timerState.label != t.label) {
+                // "Start Timer" prompt — only while this step doesn't have its own timer
+                // yet. Other steps' timers keep running in the chip row (stackable).
+                if let t = current?.detectedTimer, timers.timer(forStep: currentIndex) == nil {
                     timerPrompt(t)
                         .padding(.horizontal, Spacing.md)
                 }
@@ -287,6 +344,62 @@ struct CookModeView: View {
         }
     }
 
+    // MARK: - Timer chips
+
+    private var timerChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Spacing.sm) {
+                ForEach(timers.timers) { t in
+                    timerChip(t)
+                }
+            }
+            .padding(.horizontal, Spacing.md)
+        }
+    }
+
+    /// Minimal once started: just an icon and the countdown. Enlarges (and fills with
+    /// the accent color) when 10 seconds or less remain so an imminent expiry is
+    /// glanceable from across the counter.
+    private func timerChip(_ t: CookTimer) -> some View {
+        let urgent = t.isRunning && t.secondsRemaining <= 10
+        return Button {
+            selectedTimerID = t.id
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: t.didComplete ? "checkmark.circle.fill"
+                                  : (t.isRunning ? "timer" : "pause.fill"))
+                    .font(.system(size: urgent ? 24 : 14, weight: .medium))
+                Text(t.didComplete ? "Done" : t.formattedTime)
+                    .font(.custom("Lora-Bold", size: urgent ? 30 : 17))
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, urgent ? Spacing.lg : Spacing.md)
+            .padding(.vertical, urgent ? Spacing.sm : 6)
+            .background(urgent ? Color.scAccent : Color.scSurface)
+            .foregroundStyle(
+                t.didComplete ? Color.green
+                    : (urgent ? Color.scBackground
+                       : (t.isRunning ? Color.scAccent : Color.scTextSecondary))
+            )
+            .clipShape(Capsule())
+            .overlay(
+                Capsule().stroke(
+                    t.didComplete ? Color.green.opacity(0.5)
+                        : (urgent ? Color.clear : Color.scBorder),
+                    lineWidth: 1
+                )
+            )
+        }
+        .animation(.easeInOut(duration: 0.25), value: urgent)
+        .accessibilityLabel(chipAccessibilityLabel(t))
+    }
+
+    private func chipAccessibilityLabel(_ t: CookTimer) -> String {
+        if t.didComplete { return "\(t.label) timer finished. Tap for details." }
+        let state = t.isRunning ? "running" : "paused"
+        return "\(t.label) timer \(state), \(spokenDuration(t.secondsRemaining)) left, step \(t.stepIndex + 1). Tap for details."
+    }
+
     // MARK: - Step dots
 
     private var stepDots: some View {
@@ -318,16 +431,11 @@ struct CookModeView: View {
             .animation(.easeInOut(duration: 0.25), value: currentIndex)
     }
 
-    // MARK: - Timer prompt (before timer is started)
+    // MARK: - Timer prompt (before this step's timer is started)
 
     private func timerPrompt(_ t: DetectedTimer) -> some View {
         Button {
-            if timerState.isRunning {
-                pendingTimerReplace = t   // confirm before ending the running timer
-            } else {
-                timerState.configure(from: t)
-                timerState.start()
-            }
+            startTimer(t, forStep: currentIndex)
         } label: {
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "timer")
@@ -345,83 +453,265 @@ struct CookModeView: View {
         .padding(.bottom, Spacing.md)
     }
 
-    // MARK: - Pinned timer overlay
+    // MARK: - Completion overlay ("what to do next")
 
-    private var pinnedTimer: some View {
-        VStack(spacing: Spacing.xs) {
-            // Progress bar
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.scBorder)
-                    Capsule()
-                        .fill(timerState.didComplete ? Color.green : Color.scAccent)
-                        .frame(width: g.size.width * timerState.progressFraction)
-                        .animation(.linear(duration: 1), value: timerState.secondsRemaining)
+    private func completionOverlay(_ done: CookTimer) -> some View {
+        VStack {
+            Spacer()
+            VStack(spacing: Spacing.md) {
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(Color.green)
+                    Text("\(done.label) timer done")
+                        .font(.scHeadline)
+                        .foregroundStyle(Color.scTextPrimary)
+                }
+
+                Text(completionGuidance(for: done))
+                    .font(.custom("Lora-Regular", size: 20, relativeTo: .title3))
+                    .foregroundStyle(Color.scTextPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+
+                if done.hasSidesLeft {
+                    Button {
+                        timers.startNextSide(id: done.id)
+                    } label: {
+                        Text("Start side \(done.sideNumber + 1)")
+                            .font(.scLabel)
+                            .padding(.horizontal, Spacing.xl)
+                            .frame(height: 48)
+                            .background(Color.scAccent)
+                            .foregroundStyle(Color.scBackground)
+                            .clipShape(Capsule())
+                    }
+                    Button("Not yet") { timers.justCompleted = nil }
+                        .font(.scLabel)
+                        .foregroundStyle(Color.scTextSecondary)
+                } else {
+                    Button {
+                        // A finished timer's job is done — clear the chip too.
+                        timers.remove(id: done.id)
+                    } label: {
+                        Text("Got it")
+                            .font(.scLabel)
+                            .padding(.horizontal, Spacing.xl)
+                            .frame(height: 48)
+                            .background(Color.scAccent)
+                            .foregroundStyle(Color.scBackground)
+                            .clipShape(Capsule())
+                    }
                 }
             }
-            .frame(height: 4)
+            .padding(Spacing.lg)
+            .background(Color.scSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.green.opacity(0.5), lineWidth: 1)
+            )
+            .padding(Spacing.lg)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.45).ignoresSafeArea())
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        .animation(.easeInOut(duration: 0.25), value: timers.justCompleted != nil)
+    }
 
-            HStack {
-                // Label + side indicator
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(timerState.didComplete ? "Done! 🎉" : timerState.label)
-                        .font(.scLabel)
-                        .foregroundStyle(timerState.didComplete ? Color.green : Color.scTextPrimary)
-                    if timerState.totalSides > 1 {
-                        Text("Side \(timerState.sideNumber) of \(timerState.totalSides)")
-                            .font(.scCaption)
-                            .foregroundStyle(Color.scTextSecondary)
+    // MARK: - Timer detail sheet (chip tapped → show the step)
+
+    @ViewBuilder
+    private var timerDetailSheet: some View {
+        if let id = selectedTimerID, let t = timers.timer(id: id) {
+            NavigationStack {
+                ZStack {
+                    Color.scBackground.ignoresSafeArea()
+                    VStack(spacing: Spacing.lg) {
+                        // Countdown
+                        VStack(spacing: Spacing.xs) {
+                            Text(t.didComplete ? "Done! 🎉" : t.formattedTime)
+                                .font(.custom("Lora-Bold", size: 56, relativeTo: .largeTitle))
+                                .foregroundStyle(t.didComplete ? Color.green : Color.scAccent)
+                                .monospacedDigit()
+                            Text(t.label + (t.isPerSide ? " · side \(t.sideNumber) of \(t.totalSides)" : ""))
+                                .font(.scLabel)
+                                .foregroundStyle(Color.scTextSecondary)
+                        }
+
+                        // Progress bar
+                        GeometryReader { g in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.scBorder)
+                                Capsule()
+                                    .fill(t.didComplete ? Color.green : Color.scAccent)
+                                    .frame(width: g.size.width * t.progressFraction)
+                            }
+                        }
+                        .frame(height: 4)
+                        .padding(.horizontal, Spacing.lg)
+
+                        // The step this timer belongs to
+                        VStack(alignment: .leading, spacing: Spacing.xs) {
+                            Text("Step \(t.stepIndex + 1)")
+                                .font(.scCaption)
+                                .foregroundStyle(Color.scTextSecondary)
+                            Text(t.stepInstruction)
+                                .font(.scBody)
+                                .foregroundStyle(Color.scTextPrimary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Spacing.md)
+                        .background(Color.scSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal, Spacing.md)
+
+                        if t.stepIndex != currentIndex {
+                            Button {
+                                jump(to: t.stepIndex)
+                                selectedTimerID = nil
+                            } label: {
+                                Label("Go to this step", systemImage: "arrow.right.circle")
+                                    .font(.scLabel)
+                            }
+                            .foregroundStyle(Color.scAccent)
+                        }
+
+                        Spacer()
+
+                        // Controls
+                        HStack(spacing: Spacing.md) {
+                            Button {
+                                if t.didComplete && t.hasSidesLeft {
+                                    timers.startNextSide(id: t.id)
+                                } else if t.isRunning {
+                                    timers.pause(id: t.id)
+                                } else if !t.didComplete {
+                                    timers.start(id: t.id)
+                                } else {
+                                    timers.reset(id: t.id)
+                                }
+                            } label: {
+                                Image(systemName: detailButtonIcon(t))
+                                    .font(.system(size: 22, weight: .medium))
+                                    .frame(width: 56, height: 56)
+                                    .background(Color.scSurface)
+                                    .foregroundStyle(Color.scTextPrimary)
+                                    .clipShape(Circle())
+                            }
+                            .accessibilityLabel(t.isRunning ? "Pause timer" : "Start timer")
+
+                            Button {
+                                timers.reset(id: t.id)
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .frame(width: 56, height: 56)
+                                    .background(Color.scSurface)
+                                    .foregroundStyle(Color.scTextPrimary)
+                                    .clipShape(Circle())
+                            }
+                            .accessibilityLabel("Reset timer")
+
+                            Button {
+                                timers.remove(id: t.id)
+                                selectedTimerID = nil
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .frame(width: 56, height: 56)
+                                    .background(Color.scSurface)
+                                    .foregroundStyle(Color.red.opacity(0.8))
+                                    .clipShape(Circle())
+                            }
+                            .accessibilityLabel("Remove timer")
+                        }
+                        .padding(.bottom, Spacing.lg)
+                    }
+                    .padding(.top, Spacing.xl)
+                }
+                .navigationTitle("Timer")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(Color.scBackground, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { selectedTimerID = nil }
+                            .foregroundStyle(Color.scAccent)
                     }
                 }
+            }
+            .presentationDetents([.medium])
+        }
+    }
 
-                Spacer()
+    private func detailButtonIcon(_ t: CookTimer) -> String {
+        if t.didComplete { return t.hasSidesLeft ? "play.fill" : "arrow.clockwise" }
+        return t.isRunning ? "pause.fill" : "play.fill"
+    }
 
-                // Time remaining
-                Text(timerState.didComplete ? "00:00" : timerState.formattedTime)
-                    .font(.custom("Lora-Bold", size: 32, relativeTo: .title))
-                    .foregroundStyle(timerState.didComplete ? Color.green : Color.scAccent)
-                    .monospacedDigit()
+    // MARK: - Timer list sheet ("what timers do I have going?")
 
-                Spacer()
-
-                // Controls
-                HStack(spacing: Spacing.sm) {
-                    Button {
-                        if timerState.isRunning { timerState.pause() }
-                        else if timerState.didComplete { timerState.reset() }
-                        else { timerState.start() }
-                    } label: {
-                        Image(systemName: buttonIcon)
-                            .font(.system(size: 20, weight: .medium))
-                            .frame(width: 40, height: 40)
-                            .background(Color.scSurface)
-                            .foregroundStyle(Color.scTextPrimary)
-                            .clipShape(Circle())
+    private var timerListSheet: some View {
+        NavigationStack {
+            ZStack {
+                Color.scBackground.ignoresSafeArea()
+                if timers.hasTimers {
+                    ScrollView {
+                        VStack(spacing: Spacing.sm) {
+                            ForEach(timers.timers) { t in
+                                Button {
+                                    showTimerList = false
+                                    jump(to: t.stepIndex)
+                                } label: {
+                                    HStack(spacing: Spacing.md) {
+                                        Image(systemName: t.didComplete ? "checkmark.circle.fill"
+                                                          : (t.isRunning ? "timer" : "pause.fill"))
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(t.didComplete ? Color.green
+                                                             : (t.isRunning ? Color.scAccent : Color.scTextSecondary))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(t.label + (t.isPerSide ? " · side \(t.sideNumber) of \(t.totalSides)" : ""))
+                                                .font(.scLabel)
+                                                .foregroundStyle(Color.scTextPrimary)
+                                            Text("Step \(t.stepIndex + 1): \(t.stepInstruction)")
+                                                .font(.scCaption)
+                                                .foregroundStyle(Color.scTextSecondary)
+                                                .lineLimit(2)
+                                        }
+                                        Spacer()
+                                        Text(t.didComplete ? "Done" : t.formattedTime)
+                                            .font(.custom("Lora-Bold", size: 22))
+                                            .foregroundStyle(t.didComplete ? Color.green : Color.scAccent)
+                                            .monospacedDigit()
+                                    }
+                                    .padding(Spacing.md)
+                                    .background(Color.scSurface)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                        }
+                        .padding(Spacing.md)
                     }
-                    Button { timerState.stop() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .medium))
-                            .frame(width: 32, height: 32)
-                            .background(Color.scSurface)
-                            .foregroundStyle(Color.scTextSecondary)
-                            .clipShape(Circle())
-                    }
+                } else {
+                    Text("No timers running")
+                        .font(.scBody)
+                        .foregroundStyle(Color.scTextSecondary)
+                }
+            }
+            .navigationTitle("Timers")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.scBackground, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showTimerList = false }
+                        .foregroundStyle(Color.scAccent)
                 }
             }
         }
-        .padding(Spacing.md)
-        .background(Color.scSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(timerState.didComplete ? Color.green.opacity(0.5) : Color.scBorder, lineWidth: 1)
-        )
-        .animation(.easeInOut(duration: 0.3), value: timerState.didComplete)
-    }
-
-    private var buttonIcon: String {
-        if timerState.didComplete { return "arrow.clockwise" }
-        return timerState.isRunning ? "pause.fill" : "play.fill"
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: - Navigation buttons

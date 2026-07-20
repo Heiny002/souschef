@@ -9,7 +9,7 @@ import Foundation
 final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable {
 
     enum VoiceCommand {
-        case next, back, startTimer, stopTimer, repeatStep, showIngredients
+        case next, back, startTimer, stopTimer, listTimers, repeatStep, showIngredients
     }
 
     @Published var isListening = false
@@ -202,6 +202,10 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
     // MARK: - Command detection
 
     private let commandTable: [(keywords: [String], command: VoiceCommand)] = [
+        // listTimers goes first: "what timers do I have going" must never fall through
+        // to a looser phrase in a later row.
+        (["what timers", "which timers", "list timers", "list the timers", "list my timers",
+          "timers do i have", "timers going", "show timers", "show my timers", "my timers"], .listTimers),
         (["next step", "next", "go next", "go forward", "forward", "continue"], .next),
         (["go back", "previous step", "previous", "back", "back up"], .back),
         (["start timer", "begin timer", "set timer", "start the timer"], .startTimer),
