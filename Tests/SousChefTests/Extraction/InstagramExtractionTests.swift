@@ -62,6 +62,80 @@ final class InstagramExtractionTests: XCTestCase {
         ]))
     }
 
+    // MARK: - Embed page parsing (the InstaFix technique)
+
+    /// Build an embed-page fixture the way Instagram serves it: the gql_data JSON is
+    /// escaped inside a JS string. Serializing then JSON-string-encoding produces the
+    /// exact escaping, so the test never drifts from real escaping rules.
+    private func embedHTMLFixture(caption: String) throws -> String {
+        let gql: [String: Any] = [
+            "shortcode_media": [
+                "edge_media_to_caption": ["edges": [["node": ["text": caption]]]],
+                "owner": ["username": "chef_jo", "full_name": "Chef Jo"],
+                "display_url": "https://example.com/thumb.jpg",
+            ],
+        ]
+        let context: [String: Any] = ["gql_data": gql, "hostname": "www.instagram.com"]
+        // sortedKeys pins "gql_data" before "hostname", matching the real page's layout
+        // (and keeping the hostname-cut fallback candidate exercised deterministically).
+        let contextJSON = String(
+            data: try JSONSerialization.data(withJSONObject: context, options: [.sortedKeys]),
+            encoding: .utf8)!
+        let escapedData = try JSONSerialization.data(
+            withJSONObject: contextJSON, options: [.fragmentsAllowed])
+        var escaped = String(data: escapedData, encoding: .utf8)!
+        escaped.removeFirst()   // strip the wrapping quotes added by string-encoding
+        escaped.removeLast()
+        return "<html><body><script>s.handle(\"\(escaped)\")</script></body></html>"
+    }
+
+    func testExtractGQLDataFromEscapedEmbedHTML() throws {
+        let html = try embedHTMLFixture(caption: "Pasta night\n\nIngredients\n200g pasta")
+        let gql = VideoMetadataFetcher.extractEmbedGQLData(fromEmbedHTML: html)
+        let meta = gql.flatMap { VideoMetadataFetcher.parseInstagramJSON(["graphql": $0]) }
+        XCTAssertEqual(meta?.caption?.hasPrefix("Pasta night"), true)
+        XCTAssertEqual(meta?.authorURL, "https://www.instagram.com/chef_jo/")
+        XCTAssertEqual(meta?.thumbnailURL, "https://example.com/thumb.jpg")
+    }
+
+    func testExtractGQLDataSurvivesBracesInCaption() throws {
+        // Braces inside the caption break naive brace-matching; the hostname-cut
+        // fallback candidate must recover it.
+        let html = try embedHTMLFixture(caption: "Use {about} 2 cups flour } extra brace")
+        let gql = VideoMetadataFetcher.extractEmbedGQLData(fromEmbedHTML: html)
+        let meta = gql.flatMap { VideoMetadataFetcher.parseInstagramJSON(["graphql": $0]) }
+        XCTAssertEqual(meta?.caption, "Use {about} 2 cups flour } extra brace")
+    }
+
+    func testExtractCaptionFromRenderedEmbedHTML() {
+        let html = """
+        <div class="Caption"><a class="CaptionUsername" href="#">chef_jo</a> \
+        Honey Garlic Chicken<br />Ingredients<br />2 chicken breasts<br />3 tbsp honey\
+        <div class="CaptionComments"><a href="#">View all 12 comments</a></div></div>
+        """
+        let caption = VideoMetadataFetcher.extractEmbedCaption(fromEmbedHTML: html)
+        XCTAssertEqual(caption?.hasPrefix("Honey Garlic Chicken"), true)
+        XCTAssertEqual(caption?.contains("2 chicken breasts"), true)
+        XCTAssertEqual(caption?.contains("chef_jo"), false, "username anchor must be stripped")
+        XCTAssertEqual(caption?.contains("comments"), false, "comments block must be stripped")
+        // <br> became newlines so the recipe parser sees list structure.
+        XCTAssertEqual(caption?.contains("\n"), true)
+    }
+
+    func testParseGraphQLResponseXDTShape() {
+        let json: [String: Any] = [
+            "data": ["xdt_shortcode_media": [
+                "edge_media_to_caption": ["edges": [["node": ["text": "Tacos\n1 lb beef"]]]],
+                "owner": ["username": "taco_t", "full_name": "Taco Tuesday"],
+                "display_url": "https://example.com/taco.jpg",
+            ]],
+        ]
+        let meta = VideoMetadataFetcher.parseInstagramGraphQLResponse(json)
+        XCTAssertEqual(meta?.caption?.hasPrefix("Tacos"), true)
+        XCTAssertEqual(meta?.authorURL, "https://www.instagram.com/taco_t/")
+        XCTAssertNil(VideoMetadataFetcher.parseInstagramGraphQLResponse(["data": [:]]))
+    }
+
     // MARK: - Caption → structured recipe
 
     func testCaptionCleaningStripsHashtagLines() {
