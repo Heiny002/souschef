@@ -6,6 +6,8 @@ struct ImportView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var urlText = ""
+    @State private var pastedText = ""
+    @State private var inputMode: InputMode = .link
     @State private var clipboardHasURL = false
     @State private var phase: ImportPhase = .idle
     @State private var extractionResult: ExtractionResult?
@@ -27,6 +29,11 @@ struct ImportView: View {
         case extractionFailed  // extraction ran but found nothing; alternatives may exist
     }
 
+    enum InputMode: Equatable {
+        case link   // fetch + extract from a URL
+        case paste  // parse a recipe the user pasted in
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -40,8 +47,13 @@ struct ImportView: View {
                     if phase == .extractionFailed {
                         extractionFailedSection
                     } else {
+                        modePicker
                         headerSection
-                        urlInputSection
+                        if inputMode == .link {
+                            urlInputSection
+                        } else {
+                            pasteInputSection
+                        }
                         statusSection
                     }
                     Spacer()
@@ -119,18 +131,92 @@ struct ImportView: View {
 
     // MARK: - Sections
 
+    private var modePicker: some View {
+        Picker("Import mode", selection: $inputMode) {
+            Text("Link").tag(InputMode.link)
+            Text("Paste Text").tag(InputMode.paste)
+        }
+        .pickerStyle(.segmented)
+        .disabled(phase == .fetching || phase == .extracting)
+        .onChange(of: inputMode) { _, _ in
+            // Switching modes clears a stale error/result from the other path.
+            errorMessage = nil
+            if phase == .error || phase == .done { phase = .idle }
+        }
+    }
+
     private var headerSection: some View {
         VStack(spacing: Spacing.sm) {
-            Image(systemName: sourceIcon)
+            Image(systemName: inputMode == .link ? sourceIcon : "doc.on.clipboard")
                 .font(.system(size: 48))
                 .foregroundStyle(Color.scAccent)
-            Text("Paste a recipe URL")
+            Text(inputMode == .link ? "Paste a recipe URL" : "Paste a recipe")
                 .font(.scHeadline)
                 .foregroundStyle(Color.scTextPrimary)
-            Text("AllRecipes, Food Network, TikTok, YouTube, and more")
+            Text(inputMode == .link
+                 ? "AllRecipes, Food Network, TikTok, YouTube, and more"
+                 : "Copy a recipe from anywhere and paste it below")
                 .font(.scCaption)
                 .foregroundStyle(Color.scTextSecondary)
                 .multilineTextAlignment(.center)
+        }
+    }
+
+    private var pasteInputSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            ZStack(alignment: .topLeading) {
+                if pastedText.isEmpty {
+                    Text("Paste the full recipe here — title, ingredients, and steps.")
+                        .font(.scBody)
+                        .foregroundStyle(Color.scTextSecondary.opacity(0.6))
+                        .padding(.horizontal, Spacing.md + 4)
+                        .padding(.vertical, Spacing.md + 8)
+                        .allowsHitTesting(false)
+                }
+                TextEditor(text: $pastedText)
+                    .font(.scBody)
+                    .foregroundStyle(Color.scTextPrimary)
+                    .scrollContentBackground(.hidden)
+                    .padding(Spacing.sm)
+                    .frame(minHeight: 180, maxHeight: 320)
+                    .disabled(phase == .fetching || phase == .extracting)
+            }
+            .background(Color.scSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(phase == .error ? Color.red.opacity(0.5) : Color.scBorder, lineWidth: 1)
+            )
+
+            HStack {
+                Button {
+                    if let clip = UIPasteboard.general.string, !clip.isEmpty {
+                        pastedText = clip
+                    }
+                } label: {
+                    Label("Paste from Clipboard", systemImage: "doc.on.clipboard")
+                        .font(.scCaption)
+                        .foregroundStyle(Color.scAccent)
+                }
+                Spacer()
+                if !pastedText.isEmpty {
+                    Button {
+                        pastedText = ""
+                        errorMessage = nil
+                        if phase != .idle { phase = .idle }
+                    } label: {
+                        Text("Clear").font(.scCaption).foregroundStyle(Color.scTextSecondary)
+                    }
+                }
+            }
+            .padding(.horizontal, Spacing.xs)
+
+            if let error = errorMessage, inputMode == .paste {
+                Text(error)
+                    .font(.scCaption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, Spacing.xs)
+            }
         }
     }
 
@@ -326,7 +412,10 @@ struct ImportView: View {
 
     private var importButton: some View {
         Button {
-            importTask = Task { await runImport() }
+            switch inputMode {
+            case .link:  importTask = Task { await runImport() }
+            case .paste: runPasteImport()
+            }
         } label: {
             Group {
                 if phase == .fetching || phase == .extracting {
@@ -378,8 +467,11 @@ struct ImportView: View {
     }
 
     private var canImport: Bool {
-        !urlText.trimmingCharacters(in: .whitespaces).isEmpty &&
-        phase != .fetching && phase != .extracting && phase != .extractionFailed
+        guard phase != .fetching, phase != .extracting, phase != .extractionFailed else { return false }
+        switch inputMode {
+        case .link:  return !urlText.trimmingCharacters(in: .whitespaces).isEmpty
+        case .paste: return pastedText.trimmingCharacters(in: .whitespacesAndNewlines).count > 10
+        }
     }
 
     private var importButtonBackground: Color {
@@ -416,6 +508,24 @@ struct ImportView: View {
         if cleaned.contains("youtube") || cleaned.contains("youtu.be") { return "play.rectangle.fill" }
         if cleaned.contains("instagram")  { return "camera.fill" }
         return "safari.fill"
+    }
+
+    /// Parse a pasted recipe entirely on-device — no network, no LLM. Fast enough to run
+    /// synchronously, then hand off to ReviewView where the user corrects anything.
+    private func runPasteImport() {
+        let text = pastedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count > 10 else { return }
+        errorMessage = nil
+
+        let result = PastedTextExtractor().extract(text: text)
+        guard !result.ingredients.isEmpty || !result.steps.isEmpty else {
+            phase = .error
+            errorMessage = "Couldn't find a recipe in that text. Make sure it includes ingredients and steps."
+            return
+        }
+        extractionResult = result
+        phase = .done
+        showReview = true
     }
 
     private func runImport() async {
