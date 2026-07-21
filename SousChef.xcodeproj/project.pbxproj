@@ -19,6 +19,7 @@
 		FEED0000000000000000CF07 /* CameraImagePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF08 /* CameraImagePicker.swift */; };
 		FEED0000000000000000CF09 /* RecipeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF0A /* RecipeScannerView.swift */; };
 		FEED0000000000000000CF03 /* PastedTextExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF04 /* PastedTextExtractorTests.swift */; };
+		FEED0000000000000000CF0B /* InstagramExtractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF0C /* InstagramExtractionTests.swift */; };
 		FEED0000000000000000AB01 /* CookTimerStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000AB02 /* CookTimerStateTests.swift */; };
 		217A8C3E81B3A1B165CBAEB2 /* CaptionAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 124A4D2FF0344B802F56263E /* CaptionAnalyzer.swift */; };
 		21A36AEB84A1CF6CF499FD33 /* VideoMetadataFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6927B3D6996D01FA9163A5 /* VideoMetadataFetcher.swift */; };
@@ -143,6 +144,7 @@
 		FEED0000000000000000CF08 /* CameraImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraImagePicker.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF0A /* RecipeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeScannerView.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF04 /* PastedTextExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastedTextExtractorTests.swift; sourceTree = "<group>"; };
+		FEED0000000000000000CF0C /* InstagramExtractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramExtractionTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000AB02 /* CookTimerStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookTimerStateTests.swift; sourceTree = "<group>"; };
 		A84D65E08565F7B6F18BB383 /* RecipeValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeValidator.swift; sourceTree = "<group>"; };
 		AB6927B3D6996D01FA9163A5 /* VideoMetadataFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoMetadataFetcher.swift; sourceTree = "<group>"; };
@@ -276,6 +278,7 @@
 				FEED0000000000000000FF02 /* ProvenanceTests.swift */,
 				FEED0000000000000000CD02 /* ParserFixesTests.swift */,
 				FEED0000000000000000CF04 /* PastedTextExtractorTests.swift */,
+				FEED0000000000000000CF0C /* InstagramExtractionTests.swift */,
 			);
 			path = Extraction;
 			sourceTree = "<group>";
@@ -590,6 +593,7 @@
 				FEED0000000000000000CD01 /* ParserFixesTests.swift in Sources */,
 				FEED0000000000000000AB01 /* CookTimerStateTests.swift in Sources */,
 				FEED0000000000000000CF03 /* PastedTextExtractorTests.swift in Sources */,
+				FEED0000000000000000CF0B /* InstagramExtractionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -121,8 +121,21 @@ actor ExtractionPipeline {
             return empty
         }
 
-        progress?("Analyzing transcript…")
+        // A written caption (Instagram/TikTok) is structured recipe text, so parse it with the
+        // same parser as paste/scan — it handles "Ingredients:/Instructions:" layouts far better
+        // than the spoken-word transcript extractor. Keep whichever candidate is richer.
+        progress?("Reading the recipe…")
         var result = TranscriptExtractor().extract(transcript: fullText)
+        if !captionText.isEmpty {
+            let pasted = PastedTextExtractor().extract(text: Self.cleanCaptionForParsing(captionText))
+            if Self.completeness(pasted) > Self.completeness(result) {
+                result = pasted
+            }
+        }
+        // Attach provenance + photo so a caption-parsed import still shows its Instagram badge,
+        // source link and thumbnail (regardless of which extractor won).
+        result.originalSourceURL = urlString
+        if result.thumbnailURL == nil { result.thumbnailURL = metadata?.thumbnailURL }
         if result.title == nil { result.title = titleHint }
 
         guard result.confidence < ConfidenceThreshold.accept else { return result }
@@ -283,6 +296,28 @@ actor ExtractionPipeline {
             return "\(keywords.joined(separator: " ")) recipe"
         }
         return nil
+    }
+
+    // MARK: - Caption parsing helpers
+
+    /// Rank two candidate extractions: a viable one always beats a non-viable one, then
+    /// prefer more ingredients, then more steps. Used to pick the caption parse over the
+    /// transcript parse (or vice versa) for a social-video import.
+    static func completeness(_ r: ExtractionResult) -> Int {
+        (r.isViable ? 1000 : 0) + r.ingredients.count * 10 + r.steps.count * 5 + (r.title != nil ? 1 : 0)
+    }
+
+    /// Drop lines that are nothing but hashtags/mentions before structured parsing —
+    /// Instagram/TikTok captions end in walls of them, and otherwise they'd become fake
+    /// ingredients or steps. Blank lines are kept so paragraph structure survives.
+    static func cleanCaptionForParsing(_ caption: String) -> String {
+        caption.components(separatedBy: .newlines).filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { return true }
+            let tokens = trimmed.split(separator: " ")
+            let tagLike = tokens.filter { $0.hasPrefix("#") || $0.hasPrefix("@") }.count
+            return tagLike != tokens.count
+        }.joined(separator: "\n")
     }
 
     // MARK: - Web Extraction Chain
