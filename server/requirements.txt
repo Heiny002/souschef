@@ -1,0 +1,6 @@
+# yt-dlp is intentionally unpinned: it only keeps working against Instagram/TikTok/YouTube
+# because it ships fixes constantly. Rebuild/redeploy periodically to pull the latest.
+yt-dlp
+fastapi>=0.110
+uvicorn[standard]>=0.29
+requests>=2.31
