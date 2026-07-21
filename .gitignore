@@ -31,6 +31,11 @@ xcuserdata/
 # Secrets — real API keys live here, never commit (use Secrets.example.xcconfig as template)
 Secrets.xcconfig
 
+# Signing — your Apple Team ID / bundle id live here, never commit
+# (use Signing.example.xcconfig as template). Keeps device signing out of the
+# tracked project file so pulls don't conflict on project.pbxproj.
+Signing.xcconfig
+
 # Swift Package Manager
 .build/
 .swiftpm/

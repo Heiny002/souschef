@@ -18,3 +18,13 @@ else
   echo "  Edit it and set ANTHROPIC_API_KEY to enable LLM-fallback extraction."
   echo "  (The app builds and runs without a key; those features stay inert.)"
 fi
+
+if [ -f Signing.xcconfig ]; then
+  echo "✓ Signing.xcconfig already exists — nothing to do."
+else
+  cp Signing.example.xcconfig Signing.xcconfig
+  echo "✓ Created Signing.xcconfig from Signing.example.xcconfig."
+  echo "  Edit it and set DEVELOPMENT_TEAM to run on a physical device."
+  echo "  (The app builds for the Simulator without it. Keeping it here instead"
+  echo "   of the project file means 'git pull' won't conflict on project.pbxproj.)"
+fi

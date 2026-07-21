@@ -18,4 +18,18 @@ ANTHROPIC_API_KEY =
 // falls back to http://localhost:8000 for local development.
 RECIPE_BACKEND_URL =
 
+// --- Code signing (developer-local) ---
+// These live here, NOT in the tracked project file, so Xcode never rewrites
+// project.pbxproj when you sign for a device — which is what used to make every
+// `git pull` conflict. The committed defaults keep CI and fresh clones building
+// for the Simulator with no team. To run on a physical device, put your Team ID
+// (and a unique bundle id if com.souschef.app is taken) in Signing.xcconfig — it
+// is gitignored. See Signing.example.xcconfig, or run ./Scripts/bootstrap.sh.
+//
+// Set BEFORE the include so Signing.xcconfig's values win (last assignment wins).
+PRODUCT_BUNDLE_IDENTIFIER = com.souschef.app
+DEVELOPMENT_TEAM =
+CODE_SIGN_STYLE = Automatic
+
 #include? "Secrets.xcconfig"
+#include? "Signing.xcconfig"

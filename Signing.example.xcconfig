@@ -1,0 +1,17 @@
+// Signing.example.xcconfig — template for local device signing.
+//
+// Copy to Signing.xcconfig (or run ./Scripts/bootstrap.sh) and fill in your
+// Apple Developer Team ID. Signing.xcconfig is gitignored, so your team never
+// reaches the repo and Xcode never rewrites the tracked project file — which is
+// what used to make every `git pull` conflict on project.pbxproj.
+//
+// Find your Team ID in Xcode ▸ Settings ▸ Accounts ▸ (your Apple ID) ▸
+// "Manage Certificates…", or at https://developer.apple.com/account (Membership).
+// A free personal team works for on-device testing.
+
+// Your 10-character Team ID, e.g. A1B2C3D4E5
+DEVELOPMENT_TEAM =
+
+// Only needed if the default com.souschef.app is already taken on Apple's side
+// (free personal teams need a globally-unique id). Uncomment and make it yours:
+// PRODUCT_BUNDLE_IDENTIFIER = com.yourname.souschef
