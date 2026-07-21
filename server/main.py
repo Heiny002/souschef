@@ -158,6 +158,80 @@ def health():
     return {"status": "ok", "yt_dlp": getattr(yt_dlp.version, "__version__", "unknown")}
 
 
+_SHORTCODE_RE = re.compile(r"instagram\.com/(?:reels?|p|tv)/([A-Za-z0-9_-]+)")
+
+
+def _instagram_embed_fallback(url: str) -> Optional[dict]:
+    """Fetch Instagram's public /embed/captioned/ page and pull the caption out of the
+    inlined gql_data JSON (or the rendered .Caption HTML). This is the embed page served
+    to third-party sites, so it works logged-out — the same route InstaFix uses in
+    production. Returns None when the post is private/removed or Instagram changes shape.
+    """
+    m = _SHORTCODE_RE.search(url)
+    if not m:
+        return None
+    shortcode = m.group(1)
+    try:
+        resp = requests.get(
+            f"https://www.instagram.com/p/{shortcode}/embed/captioned/",
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.instagram.com/",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        html = resp.text
+    except Exception:
+        return None
+
+    import json as _json
+
+    # Escaped gql_data blob inside a JS string: \"gql_data\":{...}
+    marker = '\\"gql_data\\":'
+    pos = html.find(marker)
+    if pos != -1:
+        start = pos + len(marker)
+        depth = 0
+        for i in range(start, min(len(html), start + 400_000)):
+            ch = html[i]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    fragment = html[start : i + 1]
+                    try:
+                        unescaped = _json.loads(f'"{fragment}"')
+                        gql = _json.loads(unescaped)
+                        media = gql.get("shortcode_media") or {}
+                        edges = (media.get("edge_media_to_caption") or {}).get("edges") or []
+                        caption = ((edges[0].get("node") or {}).get("text")) if edges else None
+                        if caption:
+                            return {
+                                "caption": caption,
+                                "thumbnail": media.get("display_url"),
+                                "duration": None,
+                            }
+                    except Exception:
+                        pass
+                    break
+
+    # Rendered HTML fallback: <div class="Caption">…</div>
+    cap = re.search(r'class="Caption"[^>]*>(.*?)<div class="CaptionComments"', html, re.DOTALL)
+    if cap:
+        text = re.sub(r"<br\s*/?>", "\n", cap.group(1))
+        text = re.sub(r"<a[^>]*>.*?</a>", "", text, count=1, flags=re.DOTALL)  # username anchor
+        text = re.sub(r"<[^>]+>", "", text).strip()
+        if text:
+            return {"caption": text, "thumbnail": None, "duration": None}
+    return None
+
+
 @app.post("/extract-transcript")
 def extract_transcript(req: ExtractRequest):
     url = (req.url or "").strip()
@@ -167,8 +241,18 @@ def extract_transcript(req: ExtractRequest):
     try:
         info = _extract_info(url)
     except yt_dlp.utils.DownloadError as exc:
-        # Most commonly: login required / rate-limited / removed. Surface it so the app
-        # can show a useful message rather than a generic failure.
+        # yt-dlp blocked (login wall / rate limit) — for Instagram, the public embed page
+        # usually still serves the caption, which is the field the app actually needs.
+        if "instagram.com" in url:
+            if fallback := _instagram_embed_fallback(url):
+                return {
+                    "caption": fallback["caption"],
+                    "transcript": None,
+                    "onScreenText": [],
+                    "blogURL": None,
+                    "duration": fallback["duration"],
+                    "thumbnail": fallback["thumbnail"],
+                }
         raise HTTPException(status_code=502, detail=f"Could not fetch media: {exc}") from exc
     except Exception as exc:  # noqa: BLE001 — never leak a 500 stack to the client
         raise HTTPException(status_code=502, detail=f"Extraction failed: {exc}") from exc
@@ -177,6 +261,13 @@ def extract_transcript(req: ExtractRequest):
     caption = info.get("description") or info.get("title")
     duration = info.get("duration")
     thumbnail = info.get("thumbnail")
+
+    # yt-dlp sometimes succeeds but comes back caption-less on Instagram; the embed page
+    # is a second chance at the one field that matters.
+    if not caption and "instagram.com" in url:
+        if fallback := _instagram_embed_fallback(url):
+            caption = fallback["caption"]
+            thumbnail = thumbnail or fallback["thumbnail"]
 
     return {
         "caption": caption,

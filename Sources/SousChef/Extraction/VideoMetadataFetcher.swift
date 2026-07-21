@@ -27,19 +27,33 @@ actor VideoMetadataFetcher {
         case .youTube:
             return try await fetchOEmbed(endpoint: "https://www.youtube.com/oembed", videoURL: videoURL)
         case .instagram:
-            // 1. Instagram's own web JSON API (the technique yt-dlp uses). For public posts
-            //    it returns the full caption — far more reliable than scraping og:description,
-            //    which Instagram increasingly answers with a 403 / login wall.
-            if let code = Self.instagramShortcode(from: videoURL),
-               let meta = try? await fetchInstagramAPIMeta(shortcode: code),
-               meta.caption?.isEmpty == false {
-                return meta
+            // Ordered by how reliably each survives Instagram's anti-scraping (the chain
+            // InstaFix uses in production for Discord/Telegram embeds):
+            if let code = Self.instagramShortcode(from: videoURL) {
+                // 1. The public EMBED page — built for third-party sites, so it serves
+                //    logged-out requests (even from server IPs). Caption lives in an
+                //    inlined gql_data JSON blob, with rendered HTML as a second target.
+                if let meta = try? await fetchInstagramEmbedMeta(shortcode: code),
+                   meta.caption?.isEmpty == false {
+                    return meta
+                }
+                // 2. The web GraphQL endpoint Instagram's own site calls. The doc_id is
+                //    rotated by Instagram now and then — update it when this stops working.
+                if let meta = try? await fetchInstagramGraphQLMeta(shortcode: code),
+                   meta.caption?.isEmpty == false {
+                    return meta
+                }
+                // 3. Legacy ?__a=1 JSON API (mostly login-walled now, but cheap to try).
+                if let meta = try? await fetchInstagramAPIMeta(shortcode: code),
+                   meta.caption?.isEmpty == false {
+                    return meta
+                }
             }
-            // 2. Fall back to scraping og:description from the page HTML.
+            // 4. Fall back to scraping og:description from the page HTML.
             if let meta = try? await fetchInstagramPageMeta(videoURL: videoURL) {
                 return meta
             }
-            // 3. Last resort: legacy oEmbed (needs auth now, but harmless to try).
+            // 5. Last resort: legacy oEmbed (needs auth now, but harmless to try).
             return try await fetchOEmbed(endpoint: "https://api.instagram.com/oembed", videoURL: videoURL)
         case .webPage:
             throw VideoMetadataError.unsupportedSource
@@ -132,6 +146,201 @@ actor VideoMetadataFetcher {
             caption: caption,
             thumbnailURL: thumb
         )
+    }
+
+    // MARK: - Instagram embed page (most reliable logged-out route)
+
+    private static let desktopUA =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        + "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
+    /// Fetch `/p/{shortcode}/embed/captioned/` — the page Instagram serves to third-party
+    /// sites that embed posts. Because it exists FOR logged-out rendering, it is the route
+    /// that keeps working when everything else gets a login wall. The post data (caption,
+    /// owner, thumbnail) is inlined as an escaped `gql_data` JSON blob inside a script; the
+    /// rendered `.Caption` HTML is parsed as a fallback when that blob is absent.
+    private func fetchInstagramEmbedMeta(shortcode: String) async throws -> VideoMetadata {
+        guard let url = URL(string: "https://www.instagram.com/p/\(shortcode)/embed/captioned/") else {
+            throw VideoMetadataError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.setValue(Self.desktopUA, forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        request.setValue("https://www.instagram.com/", forHTTPHeaderField: "Referer")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw VideoMetadataError.apiError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
+            throw VideoMetadataError.malformedResponse
+        }
+
+        if let gql = Self.extractEmbedGQLData(fromEmbedHTML: html),
+           let meta = Self.parseInstagramJSON(["graphql": gql]) {
+            return meta
+        }
+        if let caption = Self.extractEmbedCaption(fromEmbedHTML: html) {
+            return VideoMetadata(
+                title: caption, authorName: nil, authorURL: nil,
+                caption: caption, thumbnailURL: nil)
+        }
+        throw VideoMetadataError.malformedResponse
+    }
+
+    /// Pull the `gql_data` object out of embed-page HTML. It usually appears JSON-escaped
+    /// inside a JS string (`\"gql_data\":{…}`), occasionally unescaped. Escaped fragments
+    /// are decoded by parsing them as a JSON string literal — that handles every escape
+    /// correctly without hand-rolled unescaping.
+    static func extractEmbedGQLData(fromEmbedHTML html: String) -> [String: Any]? {
+        // Escaped form.
+        if let start = html.range(of: #"\"gql_data\":"#)?.upperBound {
+            for fragment in Self.jsonObjectCandidates(in: html, from: start, escaped: true) {
+                let quoted = "\"\(fragment)\""
+                if let unescaped = (try? JSONSerialization.jsonObject(
+                        with: Data(quoted.utf8), options: [.fragmentsAllowed])) as? String,
+                   let obj = (try? JSONSerialization.jsonObject(with: Data(unescaped.utf8)))
+                        as? [String: Any] {
+                    return obj
+                }
+            }
+        }
+        // Unescaped form.
+        if let start = html.range(of: #""gql_data":"#)?.upperBound {
+            for fragment in Self.jsonObjectCandidates(in: html, from: start, escaped: false) {
+                if let obj = (try? JSONSerialization.jsonObject(with: Data(fragment.utf8)))
+                    as? [String: Any] {
+                    return obj
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Candidate substrings for the JSON object starting at `start`, tried in order until
+    /// one parses. Brace depth is counted naively (string contents included), which is
+    /// correct unless the caption itself contains unbalanced braces — so every later
+    /// closing brace at depth ≤ 0 is offered as a further candidate, and a cut at the
+    /// `hostname` sibling key (which follows gql_data in the context object) rounds out
+    /// the list. The double-parse caller rejects wrong cuts, so extras are harmless.
+    private static func jsonObjectCandidates(
+        in text: String, from start: String.Index, escaped: Bool
+    ) -> [String] {
+        var candidates: [String] = []
+        var depth = 0
+        var idx = start
+        while idx < text.endIndex, candidates.count < 8 {
+            let c = text[idx]
+            if c == "{" {
+                depth += 1
+            } else if c == "}" {
+                depth -= 1
+                if depth <= 0 { candidates.append(String(text[start...idx])) }
+            } else if c == "<" {
+                break   // ran off the script into HTML
+            }
+            idx = text.index(after: idx)
+        }
+        let hostMarker = escaped ? #",\"hostname\""# : #","hostname""#
+        if let host = text.range(of: hostMarker, range: start..<text.endIndex) {
+            candidates.append(String(text[start..<host.lowerBound]))
+        }
+        return candidates
+    }
+
+    /// Fallback: pull the caption out of the embed page's rendered `.Caption` div —
+    /// username anchor and comments block removed, `<br>` kept as line breaks so the
+    /// "Ingredients / Instructions" structure survives for the recipe parser.
+    static func extractEmbedCaption(fromEmbedHTML html: String) -> String? {
+        guard let capMarker = html.range(of: #"class="Caption""#),
+              let openEnd = html.range(of: ">", range: capMarker.upperBound..<html.endIndex)
+        else { return nil }
+        var segment = String(html[openEnd.upperBound...])
+
+        if let comments = segment.range(of: #"class="CaptionComments""#) {
+            let prefix = segment[..<comments.lowerBound]
+            if let tagStart = prefix.range(of: "<div", options: .backwards) {
+                segment = String(prefix[..<tagStart.lowerBound])
+            } else {
+                segment = String(prefix)
+            }
+        } else if let end = segment.range(of: "</div>") {
+            segment = String(segment[..<end.lowerBound])
+        }
+
+        // Drop the leading username anchor.
+        if let aStart = segment.range(of: "<a"),
+           let aEnd = segment.range(of: "</a>"),
+           aStart.lowerBound < aEnd.lowerBound {
+            segment.removeSubrange(aStart.lowerBound..<aEnd.upperBound)
+        }
+        for br in ["<br />", "<br/>", "<br>"] {
+            segment = segment.replacingOccurrences(of: br, with: "\n")
+        }
+        if let re = try? NSRegularExpression(pattern: "<[^>]+>") {
+            segment = re.stringByReplacingMatches(
+                in: segment, range: NSRange(segment.startIndex..., in: segment), withTemplate: "")
+        }
+        let cleaned = segment.htmlEntityDecoded
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    // MARK: - Instagram web GraphQL
+
+    /// The persisted query id Instagram's web app sends for "load this post". Instagram
+    /// rotates it occasionally as an anti-scraping measure — when this layer stops
+    /// returning data, pull the current value from a fresh instagram.com page load (or
+    /// InstaFix's source, which tracks it).
+    private static let instagramPostDocID = "25531498899829322"
+
+    private func fetchInstagramGraphQLMeta(shortcode: String) async throws -> VideoMetadata {
+        guard let url = URL(string: "https://www.instagram.com/graphql/query/") else {
+            throw VideoMetadataError.invalidURL
+        }
+        let variables = #"{"shortcode":"\#(shortcode)","fetch_comment_count":40,"#
+            + #""parent_comment_count":24,"child_comment_count":3,"fetch_like_count":10,"#
+            + #""fetch_tagged_user_count":null,"fetch_preview_comment_count":2,"#
+            + #""has_threaded_comments":true,"hoisted_comment_id":null,"hoisted_reply_id":null}"#
+
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "doc_id", value: Self.instagramPostDocID),
+            URLQueryItem(name: "variables", value: variables),
+            URLQueryItem(name: "fb_api_req_friendly_name", value: "PolarisPostActionLoadPostQueryQuery"),
+        ]
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = components.percentEncodedQuery.map { Data($0.utf8) }
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue(Self.desktopUA, forHTTPHeaderField: "User-Agent")
+        request.setValue("936619743392459", forHTTPHeaderField: "X-IG-App-ID")
+        request.setValue("PolarisPostActionLoadPostQueryQuery", forHTTPHeaderField: "X-FB-Friendly-Name")
+        request.setValue("cors", forHTTPHeaderField: "Sec-Fetch-Mode")
+        request.setValue("https://www.instagram.com", forHTTPHeaderField: "Origin")
+        request.setValue("https://www.instagram.com/", forHTTPHeaderField: "Referer")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw VideoMetadataError.apiError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let meta = Self.parseInstagramGraphQLResponse(json) else {
+            throw VideoMetadataError.malformedResponse
+        }
+        return meta
+    }
+
+    /// GraphQL responses carry the post under `data.xdt_shortcode_media` (newer) or
+    /// `data.shortcode_media`; both share the classic media shape, so re-wrap and reuse
+    /// the standard parser.
+    static func parseInstagramGraphQLResponse(_ json: [String: Any]) -> VideoMetadata? {
+        guard let dataDict = json["data"] as? [String: Any] else { return nil }
+        let media = dataDict["xdt_shortcode_media"] as? [String: Any]
+            ?? dataDict["shortcode_media"] as? [String: Any]
+        guard let media else { return nil }
+        return parseInstagramJSON(["graphql": ["shortcode_media": media]])
     }
 
     // MARK: - Instagram web JSON API (the yt-dlp technique)
