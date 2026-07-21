@@ -27,11 +27,19 @@ actor VideoMetadataFetcher {
         case .youTube:
             return try await fetchOEmbed(endpoint: "https://www.youtube.com/oembed", videoURL: videoURL)
         case .instagram:
-            // Instagram oEmbed has required auth since 2020 — fall back to page HTML scraping
+            // 1. Instagram's own web JSON API (the technique yt-dlp uses). For public posts
+            //    it returns the full caption — far more reliable than scraping og:description,
+            //    which Instagram increasingly answers with a 403 / login wall.
+            if let code = Self.instagramShortcode(from: videoURL),
+               let meta = try? await fetchInstagramAPIMeta(shortcode: code),
+               meta.caption?.isEmpty == false {
+                return meta
+            }
+            // 2. Fall back to scraping og:description from the page HTML.
             if let meta = try? await fetchInstagramPageMeta(videoURL: videoURL) {
                 return meta
             }
-            // Last resort: try oEmbed anyway (may work for some embed configurations)
+            // 3. Last resort: legacy oEmbed (needs auth now, but harmless to try).
             return try await fetchOEmbed(endpoint: "https://api.instagram.com/oembed", videoURL: videoURL)
         case .webPage:
             throw VideoMetadataError.unsupportedSource
@@ -124,6 +132,89 @@ actor VideoMetadataFetcher {
             caption: caption,
             thumbnailURL: thumb
         )
+    }
+
+    // MARK: - Instagram web JSON API (the yt-dlp technique)
+
+    /// Instagram's website loads post data from this endpoint using its web "app id" header.
+    /// For public posts it returns JSON that includes the full caption text — which is where
+    /// creators write the recipe. Undocumented and a moving target, so every failure mode
+    /// falls back to the HTML scrape; treat it as best-effort, not guaranteed.
+    private func fetchInstagramAPIMeta(shortcode: String) async throws -> VideoMetadata {
+        guard let url = URL(string: "https://www.instagram.com/p/\(shortcode)/?__a=1&__d=dis") else {
+            throw VideoMetadataError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        // 936619743392459 is the public web app id Instagram's own site sends. Without it the
+        // endpoint redirects logged-out requests to a login page instead of returning JSON.
+        request.setValue("936619743392459", forHTTPHeaderField: "X-IG-App-ID")
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://www.instagram.com/", forHTTPHeaderField: "Referer")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw VideoMetadataError.apiError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let meta = Self.parseInstagramJSON(json) else {
+            throw VideoMetadataError.malformedResponse
+        }
+        return meta
+    }
+
+    /// Pull the shortcode from a `/reel/`, `/reels/`, `/p/` or `/tv/` Instagram URL.
+    static func instagramShortcode(from urlString: String) -> String? {
+        guard let url = URL(string: urlString) else { return nil }
+        let parts = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
+        let markers: Set<String> = ["reel", "reels", "p", "tv"]
+        for (i, comp) in parts.enumerated() where markers.contains(comp.lowercased()) {
+            if i + 1 < parts.count { return parts[i + 1] }
+        }
+        return nil
+    }
+
+    /// Parse caption / author / thumbnail out of Instagram's JSON, tolerating both the newer
+    /// `items[]` shape and the older `graphql.shortcode_media` shape.
+    static func parseInstagramJSON(_ json: [String: Any]) -> VideoMetadata? {
+        // Newer shape: { items: [ { caption:{text}, user:{username,full_name},
+        //                           image_versions2:{candidates:[{url}]} } ] }
+        if let items = json["items"] as? [[String: Any]],
+           let item = items.first,
+           let caption = (item["caption"] as? [String: Any])?["text"] as? String,
+           !caption.isEmpty {
+            let user = item["user"] as? [String: Any]
+            let username = user?["username"] as? String
+            let thumb = ((item["image_versions2"] as? [String: Any])?["candidates"]
+                as? [[String: Any]])?.first?["url"] as? String
+            return VideoMetadata(
+                title: caption,
+                authorName: user?["full_name"] as? String,
+                authorURL: username.map { "https://www.instagram.com/\($0)/" },
+                caption: caption,
+                thumbnailURL: thumb)
+        }
+        // Older shape: { graphql: { shortcode_media: {
+        //   edge_media_to_caption:{edges:[{node:{text}}]}, owner:{username,full_name}, display_url } } }
+        let media = (json["graphql"] as? [String: Any])?["shortcode_media"] as? [String: Any]
+            ?? (json["data"] as? [String: Any])?["shortcode_media"] as? [String: Any]
+        if let media,
+           let edges = (media["edge_media_to_caption"] as? [String: Any])?["edges"] as? [[String: Any]],
+           let caption = (edges.first?["node"] as? [String: Any])?["text"] as? String,
+           !caption.isEmpty {
+            let owner = media["owner"] as? [String: Any]
+            let username = owner?["username"] as? String
+            return VideoMetadata(
+                title: caption,
+                authorName: owner?["full_name"] as? String,
+                authorURL: username.map { "https://www.instagram.com/\($0)/" },
+                caption: caption,
+                thumbnailURL: media["display_url"] as? String)
+        }
+        return nil
     }
 
     /// Extract the `content` attribute of a `<meta property="..." content="...">` tag.
