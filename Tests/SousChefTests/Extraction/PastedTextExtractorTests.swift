@@ -109,6 +109,41 @@ final class PastedTextExtractorTests: XCTestCase {
         XCTAssertFalse(r.isViable)
     }
 
+    func testOCRStyleTextWithNoisyWhitespace() {
+        // Vision OCR emits one observation per visual line with ragged spacing and stray
+        // blank lines. The parser must still recover the recipe (this is the scan path).
+        let text = """
+        Weeknight Chili
+
+        Ingredients
+
+        1 lb ground beef
+
+        1 onion , diced
+        2 cans kidney beans
+        3 tbsp chili powder
+
+
+        Directions
+        Brown the beef with the onion.
+        Add the beans and chili powder.
+        Simmer for 30 minutes.
+        """
+        let r = extractor.extract(text: text)
+        XCTAssertEqual(r.title, "Weeknight Chili")
+        XCTAssertEqual(r.ingredients.count, 4)
+        XCTAssertEqual(r.steps.count, 3)
+        XCTAssertTrue(r.isViable)
+    }
+
+    func testBlankManualResultIsEditableSkeleton() {
+        let r = ReviewView.blankManualResult()
+        XCTAssertEqual(r.extractionMethod, "manual")
+        XCTAssertEqual(r.ingredients.count, 1)
+        XCTAssertEqual(r.steps.count, 1)
+        XCTAssertEqual(r.ingredients.first?.text, "")
+    }
+
     func testInlineNumberedStepsOnOneLine() {
         let text = """
         Toast

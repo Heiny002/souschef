@@ -15,6 +15,9 @@
 		FEED0000000000000000FF01 /* ProvenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000FF02 /* ProvenanceTests.swift */; };
 		FEED0000000000000000CD01 /* ParserFixesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CD02 /* ParserFixesTests.swift */; };
 		FEED0000000000000000CF01 /* PastedTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF02 /* PastedTextExtractor.swift */; };
+		FEED0000000000000000CF05 /* ImageTextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF06 /* ImageTextRecognizer.swift */; };
+		FEED0000000000000000CF07 /* CameraImagePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF08 /* CameraImagePicker.swift */; };
+		FEED0000000000000000CF09 /* RecipeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF0A /* RecipeScannerView.swift */; };
 		FEED0000000000000000CF03 /* PastedTextExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF04 /* PastedTextExtractorTests.swift */; };
 		FEED0000000000000000AB01 /* CookTimerStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000AB02 /* CookTimerStateTests.swift */; };
 		217A8C3E81B3A1B165CBAEB2 /* CaptionAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 124A4D2FF0344B802F56263E /* CaptionAnalyzer.swift */; };
@@ -136,6 +139,9 @@
 		FEED0000000000000000FF02 /* ProvenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProvenanceTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CD02 /* ParserFixesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserFixesTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF02 /* PastedTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastedTextExtractor.swift; sourceTree = "<group>"; };
+		FEED0000000000000000CF06 /* ImageTextRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageTextRecognizer.swift; sourceTree = "<group>"; };
+		FEED0000000000000000CF08 /* CameraImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraImagePicker.swift; sourceTree = "<group>"; };
+		FEED0000000000000000CF0A /* RecipeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeScannerView.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF04 /* PastedTextExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastedTextExtractorTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000AB02 /* CookTimerStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookTimerStateTests.swift; sourceTree = "<group>"; };
 		A84D65E08565F7B6F18BB383 /* RecipeValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeValidator.swift; sourceTree = "<group>"; };
@@ -226,6 +232,8 @@
 			isa = PBXGroup;
 			children = (
 				2DE77EF4D3ED40987FB6DD69 /* CompatibilityView.swift */,
+				FEED0000000000000000CF08 /* CameraImagePicker.swift */,
+				FEED0000000000000000CF0A /* RecipeScannerView.swift */,
 				43A1CD6E33671039BE2F1D6F /* CookModeView.swift */,
 				8CCCA666B0B957AABF2ED7AB /* DinerProfilesView.swift */,
 				7C9FE66F7A96F67B86A4634E /* ImportView.swift */,
@@ -375,6 +383,7 @@
 				324369F23CEEC663CA1EA5A0 /* ExtractionPipeline.swift */,
 				443FFA2EEDD23F93CCAC6408 /* ExtractionResult.swift */,
 				FEED0000000000000000CF02 /* PastedTextExtractor.swift */,
+				FEED0000000000000000CF06 /* ImageTextRecognizer.swift */,
 				9B900B6CCB0A116CB1F75B38 /* FoodDictionary.swift */,
 				3004C4972FFDBE1BE2A0023B /* HeuristicExtractor.swift */,
 				644C35F47DEA2B69B329D45D /* IngredientParser.swift */,
@@ -530,6 +539,9 @@
 				464EB83C7C25B1D9370CDC48 /* ExtractionPipeline.swift in Sources */,
 				53F6776273EA863FF9B65B9D /* ExtractionResult.swift in Sources */,
 				FEED0000000000000000CF01 /* PastedTextExtractor.swift in Sources */,
+				FEED0000000000000000CF05 /* ImageTextRecognizer.swift in Sources */,
+				FEED0000000000000000CF07 /* CameraImagePicker.swift in Sources */,
+				FEED0000000000000000CF09 /* RecipeScannerView.swift in Sources */,
 				412A1A6487E6E55FEA85044F /* FoodDictionary.swift in Sources */,
 				E0837A5412C3972BF9661253 /* HeuristicExtractor.swift in Sources */,
 				22C4C03883DB86E008BEF963 /* ISO8601DurationParser.swift in Sources */,

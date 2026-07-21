@@ -9,6 +9,8 @@ struct RecipeLibraryView: View {
     @State private var searchText = ""
     @State private var sortOrder = SortOption.dateAdded
     @State private var showImportSheet = false
+    @State private var showScannerSheet = false
+    @State private var showManualSheet = false
     @State private var pendingDelete: Recipe?
 
     enum SortOption: String, CaseIterable {
@@ -46,6 +48,16 @@ struct RecipeLibraryView: View {
             .searchable(text: $searchText, prompt: "Search recipes")
             .sheet(isPresented: $showImportSheet) {
                 ImportView()
+            }
+            .sheet(isPresented: $showScannerSheet) {
+                RecipeScannerView()
+            }
+            .sheet(isPresented: $showManualSheet) {
+                ReviewView(
+                    result: ReviewView.blankManualResult(),
+                    screenTitle: "New Recipe",
+                    showsCancelButton: true
+                )
             }
             .confirmationDialog(
                 "Delete this recipe?",
@@ -128,13 +140,14 @@ struct RecipeLibraryView: View {
                 .font(.scHeadline)
                 .foregroundStyle(Color.scTextPrimary)
             if searchText.isEmpty {
-                Text("Paste a recipe URL to get started")
+                Text("Import a link, scan a photo, or add one by hand")
                     .font(.scBody)
                     .foregroundStyle(Color.scTextSecondary)
-                Button {
-                    showImportSheet = true
+                    .multilineTextAlignment(.center)
+                Menu {
+                    addMenuItems
                 } label: {
-                    Label("Import Recipe", systemImage: "link.badge.plus")
+                    Label("Add a Recipe", systemImage: "plus")
                         .font(.scLabel)
                         .padding(.horizontal, Spacing.lg)
                         .padding(.vertical, Spacing.sm)
@@ -163,13 +176,33 @@ struct RecipeLibraryView: View {
             .accessibilityLabel("Sort recipes")
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                showImportSheet = true
+            Menu {
+                addMenuItems
             } label: {
                 Image(systemName: "plus")
                     .foregroundStyle(Color.scAccent)
             }
-            .accessibilityLabel("Import recipe")
+            .accessibilityLabel("Add recipe")
+        }
+    }
+
+    /// Shared "add a recipe" options, used by both the toolbar + and the empty-state button.
+    @ViewBuilder
+    private var addMenuItems: some View {
+        Button {
+            showImportSheet = true
+        } label: {
+            Label("Web Link or Paste", systemImage: "link")
+        }
+        Button {
+            showScannerSheet = true
+        } label: {
+            Label("Scan a Photo", systemImage: "text.viewfinder")
+        }
+        Button {
+            showManualSheet = true
+        } label: {
+            Label("Enter Manually", systemImage: "square.and.pencil")
         }
     }
 }
@@ -224,6 +257,8 @@ enum RecipeSourceStyle {
         case "instagram": return "Instagram"
         case "youtube":   return "YouTube"
         case "manual":    return "Manual"
+        case "photo":     return "Photo"
+        case "pasted":    return "Pasted"
         default:          return "Web"
         }
     }
@@ -232,6 +267,8 @@ enum RecipeSourceStyle {
         switch sourceType.lowercased() {
         case "tiktok", "instagram", "youtube": return "play.rectangle.fill"
         case "manual":                          return "square.and.pencil"
+        case "photo":                           return "camera.fill"
+        case "pasted":                          return "doc.on.clipboard"
         default:                                return "globe"
         }
     }

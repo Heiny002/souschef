@@ -10,6 +10,8 @@ struct ReviewView: View {
     let extractionResult: ExtractionResult
     let onSave: ((Recipe) -> Void)?
     let onRetry: (() -> Void)?
+    let screenTitle: String
+    let showsCancelButton: Bool
 
     @State private var title: String
     @State private var recipeYield: String
@@ -20,14 +22,29 @@ struct ReviewView: View {
     private let parser = IngredientParser()
     private let validator = RecipeValidator()
 
+    /// A blank recipe to hand to ReviewView for from-scratch manual entry — one empty
+    /// ingredient and step so the fields are visible; the user adds more with the buttons.
+    static func blankManualResult() -> ExtractionResult {
+        var result = ExtractionResult(extractionMethod: "manual")
+        result.ingredients = [RawIngredient(text: "")]
+        result.steps = [RawStep(order: 1, text: "")]
+        return result
+    }
+
+    private var isManual: Bool { extractionResult.extractionMethod == "manual" }
+
     init(
         result: ExtractionResult,
         onSave: ((Recipe) -> Void)? = nil,
-        onRetry: (() -> Void)? = nil
+        onRetry: (() -> Void)? = nil,
+        screenTitle: String = "Review Recipe",
+        showsCancelButton: Bool = false
     ) {
         self.extractionResult = result
         self.onSave = onSave
         self.onRetry = onRetry
+        self.screenTitle = screenTitle
+        self.showsCancelButton = showsCancelButton
         _title = State(initialValue: result.title ?? "")
         _recipeYield = State(initialValue: result.recipeYield ?? "")
         _ingredients = State(initialValue: result.ingredients.map { EditableIngredient(raw: $0) })
@@ -43,7 +60,9 @@ struct ReviewView: View {
                         if extractionResult.isSubstitute {
                             substituteBanner
                         }
-                        confidenceHeader
+                        if !isManual {
+                            confidenceHeader
+                        }
                         titleSection
                         yieldSection
                         ingredientsSection
@@ -56,10 +75,18 @@ struct ReviewView: View {
                     .padding(Spacing.md)
                 }
             }
-            .navigationTitle("Review Recipe")
+            .navigationTitle(screenTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color.scBackground, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                if showsCancelButton {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                            .foregroundStyle(Color.scTextSecondary)
+                    }
+                }
+            }
             .onAppear { runValidation() }
         }
     }
@@ -112,16 +139,23 @@ struct ReviewView: View {
                 .font(.scLabel)
                 .foregroundStyle(Color.scAccent)
             ForEach($ingredients) { $ingredient in
-                TextField("Ingredient", text: $ingredient.text)
-                    .font(.scBody)
-                    .foregroundStyle(Color.scTextPrimary)
-                    .padding(Spacing.sm)
-                    .background(ingredientBackground(for: ingredient))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(ingredientBorder(for: ingredient), lineWidth: 1)
-                    )
+                HStack(spacing: Spacing.sm) {
+                    TextField("Ingredient", text: $ingredient.text)
+                        .font(.scBody)
+                        .foregroundStyle(Color.scTextPrimary)
+                        .padding(Spacing.sm)
+                        .background(ingredientBackground(for: ingredient))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(ingredientBorder(for: ingredient), lineWidth: 1)
+                        )
+                    deleteButton { removeIngredient(ingredient.id) }
+                        .accessibilityLabel("Remove ingredient")
+                }
+            }
+            addButton("Add ingredient") {
+                ingredients.append(EditableIngredient(raw: RawIngredient(text: "")))
             }
         }
     }
@@ -131,21 +165,62 @@ struct ReviewView: View {
             Label("Steps (\(steps.count))", systemImage: "checklist")
                 .font(.scLabel)
                 .foregroundStyle(Color.scAccent)
-            ForEach(steps.indices, id: \.self) { idx in
-                HStack(alignment: .top, spacing: Spacing.sm) {
-                    Text("\(idx + 1)")
-                        .font(.scLabel)
-                        .foregroundStyle(Color.scAccent)
-                        .frame(width: 24, alignment: .leading)
-                    TextField("Step", text: $steps[idx].text, axis: .vertical)
-                        .font(.scBody)
-                        .foregroundStyle(Color.scTextPrimary)
-                        .padding(Spacing.sm)
-                        .background(Color.scSurface)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
+            ForEach($steps) { $step in
+                stepRow($step)
+            }
+            addButton("Add step") {
+                steps.append(EditableStep(raw: RawStep(order: steps.count + 1, text: "")))
             }
         }
+    }
+
+    private func stepRow(_ step: Binding<EditableStep>) -> some View {
+        // Numbering derives from position, so it stays correct after inserts/deletes;
+        // binding by identity (not index) keeps SwiftUI from reusing a deleted row's field.
+        let number = (steps.firstIndex { $0.id == step.wrappedValue.id } ?? 0) + 1
+        return HStack(alignment: .top, spacing: Spacing.sm) {
+            Text("\(number)")
+                .font(.scLabel)
+                .foregroundStyle(Color.scAccent)
+                .frame(width: 24, alignment: .leading)
+                .padding(.top, Spacing.sm)
+            TextField("Step", text: step.text, axis: .vertical)
+                .font(.scBody)
+                .foregroundStyle(Color.scTextPrimary)
+                .padding(Spacing.sm)
+                .background(Color.scSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            deleteButton { removeStep(step.wrappedValue.id) }
+                .accessibilityLabel("Remove step")
+                .padding(.top, Spacing.sm)
+        }
+    }
+
+    private func deleteButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "minus.circle.fill")
+                .font(.system(size: 20))
+                .foregroundStyle(Color.scTextSecondary.opacity(0.7))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func addButton(_ title: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: "plus.circle")
+                .font(.scLabel)
+                .foregroundStyle(Color.scAccent)
+                .padding(.vertical, Spacing.xs)
+        }
+    }
+
+    private func removeIngredient(_ id: UUID) {
+        ingredients.removeAll { $0.id == id }
+        runValidation()
+    }
+
+    private func removeStep(_ id: UUID) {
+        steps.removeAll { $0.id == id }
     }
 
     private func validationSection(report: ValidationReport) -> some View {
@@ -276,6 +351,12 @@ struct ReviewView: View {
         // Tag each ingredient with its validation state
         for (idx, parsed) in parsedIngredients.enumerated() {
             guard idx < ingredients.count else { continue }
+            // A row the user hasn't filled in yet (blank) is neutral, not a failure —
+            // otherwise a fresh manual recipe or a just-added row flashes red.
+            if ingredients[idx].text.trimmingCharacters(in: .whitespaces).isEmpty {
+                ingredients[idx].validationSeverity = .pass
+                continue
+            }
             let hasQuantity = parsed.quantity != nil
             let hasItem = !parsed.item.isEmpty
             if !hasQuantity && !hasItem {
@@ -303,7 +384,7 @@ struct ReviewView: View {
         let recipe = Recipe(
             title: title.trimmingCharacters(in: .whitespaces),
             sourceURL: storedURL,
-            sourceType: URLRouter.sourceType(forStoredURL: platformURL),
+            sourceType: resolvedSourceType(platformURL: platformURL),
             extractionConfidence: extractionResult.confidence,
             extractionMethod: extractionResult.extractionMethod
         )
@@ -316,25 +397,44 @@ struct ReviewView: View {
         recipe.totalTime = extractionResult.totalTime
         recipe.userVerified = true
 
-        // Parse and create ingredients
-        recipe.ingredients = ingredients.enumerated().map { idx, editable in
-            let parsed = parser.parse(raw: editable.text)
-            let ingredient = Ingredient(item: parsed.item, rawText: editable.text, order: idx)
-            ingredient.quantity = parsed.quantity
-            ingredient.unit = parsed.unit
-            ingredient.preparation = parsed.preparation
-            ingredient.section = parsed.section
-            return ingredient
-        }
+        // Parse and create ingredients — blank rows (e.g. an unused starter/added row)
+        // are dropped so they don't persist as empty entries.
+        recipe.ingredients = ingredients
+            .filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+            .enumerated().map { idx, editable in
+                let parsed = parser.parse(raw: editable.text)
+                let ingredient = Ingredient(item: parsed.item, rawText: editable.text, order: idx)
+                ingredient.quantity = parsed.quantity
+                ingredient.unit = parsed.unit
+                ingredient.preparation = parsed.preparation
+                ingredient.section = parsed.section
+                return ingredient
+            }
 
-        // Create steps
-        recipe.steps = steps.enumerated().map { idx, editable in
-            CookingStep(order: idx + 1, instruction: editable.text, rawText: editable.text)
-        }
+        // Create steps (blank rows dropped, order re-numbered from what remains).
+        recipe.steps = steps
+            .filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+            .enumerated().map { idx, editable in
+                CookingStep(order: idx + 1, instruction: editable.text, rawText: editable.text)
+            }
 
         modelContext.insert(recipe)
         onSave?(recipe)
         dismiss()
+    }
+
+    /// Recipes imported from a URL keep their platform badge (web/tiktok/…). Recipes with
+    /// no URL are badged by how they were created, so the Library shows an honest source.
+    private func resolvedSourceType(platformURL: String?) -> String {
+        if let platformURL, !platformURL.isEmpty {
+            return URLRouter.sourceType(forStoredURL: platformURL)
+        }
+        switch extractionResult.extractionMethod {
+        case "manual":       return "manual"
+        case "photo-ocr":    return "photo"
+        case "pasted-text":  return "pasted"
+        default:             return "web"
+        }
     }
 }
 
