@@ -15,6 +15,7 @@
 		FEED0000000000000000FF01 /* ProvenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000FF02 /* ProvenanceTests.swift */; };
 		FEED0000000000000000CD01 /* ParserFixesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CD02 /* ParserFixesTests.swift */; };
 		FEED0000000000000000CF01 /* PastedTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF02 /* PastedTextExtractor.swift */; };
+		FEED0000000000000000CF0D /* InstagramWebViewExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF0E /* InstagramWebViewExtractor.swift */; };
 		FEED0000000000000000CF05 /* ImageTextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF06 /* ImageTextRecognizer.swift */; };
 		FEED0000000000000000CF07 /* CameraImagePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF08 /* CameraImagePicker.swift */; };
 		FEED0000000000000000CF09 /* RecipeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF0A /* RecipeScannerView.swift */; };
@@ -140,6 +141,7 @@
 		FEED0000000000000000FF02 /* ProvenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProvenanceTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CD02 /* ParserFixesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserFixesTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF02 /* PastedTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastedTextExtractor.swift; sourceTree = "<group>"; };
+		FEED0000000000000000CF0E /* InstagramWebViewExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramWebViewExtractor.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF06 /* ImageTextRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageTextRecognizer.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF08 /* CameraImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraImagePicker.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF0A /* RecipeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeScannerView.swift; sourceTree = "<group>"; };
@@ -386,6 +388,7 @@
 				324369F23CEEC663CA1EA5A0 /* ExtractionPipeline.swift */,
 				443FFA2EEDD23F93CCAC6408 /* ExtractionResult.swift */,
 				FEED0000000000000000CF02 /* PastedTextExtractor.swift */,
+				FEED0000000000000000CF0E /* InstagramWebViewExtractor.swift */,
 				FEED0000000000000000CF06 /* ImageTextRecognizer.swift */,
 				9B900B6CCB0A116CB1F75B38 /* FoodDictionary.swift */,
 				3004C4972FFDBE1BE2A0023B /* HeuristicExtractor.swift */,
@@ -542,6 +545,7 @@
 				464EB83C7C25B1D9370CDC48 /* ExtractionPipeline.swift in Sources */,
 				53F6776273EA863FF9B65B9D /* ExtractionResult.swift in Sources */,
 				FEED0000000000000000CF01 /* PastedTextExtractor.swift in Sources */,
+				FEED0000000000000000CF0D /* InstagramWebViewExtractor.swift in Sources */,
 				FEED0000000000000000CF05 /* ImageTextRecognizer.swift in Sources */,
 				FEED0000000000000000CF07 /* CameraImagePicker.swift in Sources */,
 				FEED0000000000000000CF09 /* RecipeScannerView.swift in Sources */,
