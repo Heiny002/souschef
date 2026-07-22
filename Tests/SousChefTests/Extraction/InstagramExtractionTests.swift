@@ -170,6 +170,69 @@ final class InstagramExtractionTests: XCTestCase {
         XCTAssertTrue(r.isViable)
     }
 
+    // MARK: - WKWebView caption parsing
+
+    func testCleanOGDescriptionStripsEngagementPrefix() {
+        let og = #"1,234 likes, 56 comments - chef_jo on July 20, 2026: "Honey Garlic Chicken — 2 chicken breasts, 3 tbsp honey""#
+        let caption = InstagramCaptionParser.cleanOGDescription(og)
+        XCTAssertEqual(caption?.hasPrefix("Honey Garlic Chicken"), true)
+        XCTAssertEqual(caption?.contains("likes"), false)
+        XCTAssertEqual(caption?.hasSuffix("\""), false, "trailing quote trimmed")
+    }
+
+    func testCleanOGDescriptionWithoutPrefixKeepsWholeCaption() {
+        let caption = InstagramCaptionParser.cleanOGDescription("Just a plain caption with a recipe")
+        XCTAssertEqual(caption, "Just a plain caption with a recipe")
+    }
+
+    func testOGDescriptionBoilerplateRejected() {
+        XCTAssertNil(InstagramCaptionParser.cleanOGDescription("See Instagram photos and videos from chef_jo"))
+        XCTAssertNil(InstagramCaptionParser.cleanOGDescription("Log in to Instagram"))
+        XCTAssertNil(InstagramCaptionParser.cleanOGDescription("short"))
+    }
+
+    func testParsePrefersJSONLDOverOG() throws {
+        let ld = try String(
+            data: JSONSerialization.data(withJSONObject: [
+                "@type": "VideoObject",
+                "caption": "Full recipe from JSON-LD: 2 cups flour, 1 tsp salt",
+            ]),
+            encoding: .utf8)!
+        let jsResult = try String(
+            data: JSONSerialization.data(withJSONObject: ["og": "Some og text here", "ld": ld]),
+            encoding: .utf8)!
+        XCTAssertEqual(
+            InstagramCaptionParser.parse(jsResult: jsResult),
+            "Full recipe from JSON-LD: 2 cups flour, 1 tsp salt")
+    }
+
+    func testParseFallsBackToOGWhenNoLD() throws {
+        let jsResult = try String(
+            data: JSONSerialization.data(withJSONObject: [
+                "og": #"10 likes - user: "Caption via og description here""#,
+                "ld": "",
+            ]),
+            encoding: .utf8)!
+        XCTAssertEqual(InstagramCaptionParser.parse(jsResult: jsResult), "Caption via og description here")
+    }
+
+    func testParseJSONLDGraphShape() throws {
+        let ld = try String(
+            data: JSONSerialization.data(withJSONObject: [
+                "@graph": [["@type": "ImageObject"], ["@type": "VideoObject", "articleBody": "Recipe body text from graph node"]],
+            ]),
+            encoding: .utf8)!
+        XCTAssertEqual(
+            InstagramCaptionParser.captionFromLDJSON(ld),
+            "Recipe body text from graph node")
+    }
+
+    func testParseNilAndGarbage() {
+        XCTAssertNil(InstagramCaptionParser.parse(jsResult: nil))
+        XCTAssertNil(InstagramCaptionParser.parse(jsResult: "not json"))
+        XCTAssertNil(InstagramCaptionParser.parse(jsResult: #"{"og":"","ld":""}"#))
+    }
+
     // MARK: - Candidate ranking
 
     func testCompletenessPrefersViableThenRicher() {

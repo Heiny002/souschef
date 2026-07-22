@@ -40,8 +40,21 @@ actor ExtractionPipeline {
 
         // Step 1: oEmbed for caption / title (free, no auth)
         let metadata = try? await metadataFetcher.fetch(videoURL: urlString)
-        let captionText = metadata?.caption ?? ""
+        var captionText = metadata?.caption ?? ""
         let titleHint = metadata?.title
+
+        // Step 1b: On-device real-browser fallback. When the fast URLSession routes came
+        // back empty for an Instagram post (Instagram 403s bare HTTP clients), load the
+        // post in an off-screen WKWebView — a real Safari engine Instagram will serve the
+        // link-preview caption to — and read the caption from its metadata.
+        if captionText.isEmpty,
+           URLRouter.classify(urlString) == .instagram,
+           let url = URL(string: urlString) {
+            progress?("Opening the post…")
+            if let webCaption = await InstagramWebViewExtractor.caption(from: url) {
+                captionText = webCaption
+            }
+        }
 
         // Step 2: Try transcript endpoint (may be unavailable / server down)
         var videoTranscript: VideoTranscript?
