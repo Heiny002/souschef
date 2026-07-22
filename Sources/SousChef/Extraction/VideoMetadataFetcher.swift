@@ -293,7 +293,7 @@ actor VideoMetadataFetcher {
     /// rotates it occasionally as an anti-scraping measure — when this layer stops
     /// returning data, pull the current value from a fresh instagram.com page load (or
     /// InstaFix's source, which tracks it).
-    private static let instagramPostDocID = "25531498899829322"
+    static let instagramPostDocID = "25531498899829322"
 
     private func fetchInstagramGraphQLMeta(shortcode: String) async throws -> VideoMetadata {
         guard let url = URL(string: "https://www.instagram.com/graphql/query/") else {

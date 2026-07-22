@@ -43,16 +43,23 @@ actor ExtractionPipeline {
         var captionText = metadata?.caption ?? ""
         let titleHint = metadata?.title
 
-        // Step 1b: On-device real-browser fallback. When the fast URLSession routes came
-        // back empty for an Instagram post (Instagram 403s bare HTTP clients), load the
-        // post in an off-screen WKWebView — a real Safari engine Instagram will serve the
-        // link-preview caption to — and read the caption from its metadata.
-        if captionText.isEmpty,
-           URLRouter.classify(urlString) == .instagram,
-           let url = URL(string: urlString) {
-            progress?("Opening the post…")
-            if let webCaption = await InstagramWebViewExtractor.caption(from: url) {
-                captionText = webCaption
+        // Step 1b: Instagram fallbacks when the logged-out URLSession routes came back empty.
+        if captionText.isEmpty, URLRouter.classify(urlString) == .instagram {
+            let shortcode = VideoMetadataFetcher.instagramShortcode(from: urlString)
+
+            // Best route: authenticated GraphQL using the user's in-app Instagram session
+            // (see InstagramConnectView). Returns the full caption past the login wall.
+            if let shortcode, let authCaption = await InstagramAuth.fetchCaption(shortcode: shortcode) {
+                captionText = authCaption
+            }
+
+            // Logged-out real-browser fallback: an off-screen WKWebView reads the caption
+            // from link-preview metadata. Works for some public posts; may be partial.
+            if captionText.isEmpty, let url = URL(string: urlString) {
+                progress?("Opening the post…")
+                if let webCaption = await InstagramWebViewExtractor.caption(from: url) {
+                    captionText = webCaption
+                }
             }
         }
 

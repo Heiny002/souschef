@@ -233,6 +233,18 @@ final class InstagramExtractionTests: XCTestCase {
         XCTAssertNil(InstagramCaptionParser.parse(jsResult: #"{"og":"","ld":""}"#))
     }
 
+    // MARK: - Authenticated GraphQL variables
+
+    func testGraphQLVariablesAreValidJSONWithShortcode() throws {
+        let vars = InstagramAuth.graphQLVariables(shortcode: "DaQXcT-R807")
+        let obj = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(vars.utf8)) as? [String: Any])
+        XCTAssertEqual(obj["shortcode"] as? String, "DaQXcT-R807")
+        // Comment/like counts zeroed — we only want the caption.
+        XCTAssertEqual(obj["fetch_comment_count"] as? Int, 0)
+        XCTAssertEqual(obj["has_threaded_comments"] as? Bool, true)
+    }
+
     // MARK: - Candidate ranking
 
     func testCompletenessPrefersViableThenRicher() {
