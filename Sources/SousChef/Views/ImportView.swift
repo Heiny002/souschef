@@ -8,6 +8,8 @@ struct ImportView: View {
     @State private var urlText = ""
     @State private var pastedText = ""
     @State private var inputMode: InputMode = .link
+    @State private var showConnectInstagram = false
+    @State private var instagramConnected = false
     @State private var clipboardHasURL = false
     @State private var phase: ImportPhase = .idle
     @State private var extractionResult: ExtractionResult?
@@ -62,6 +64,9 @@ struct ImportView: View {
                     } else {
                         importButton
                     }
+                    if inputMode == .link {
+                        connectInstagramButton
+                    }
                 }
                 .padding(Spacing.md)
                 .symbolRenderingMode(.monochrome)
@@ -95,6 +100,10 @@ struct ImportView: View {
                     )
                 }
             }
+            .sheet(isPresented: $showConnectInstagram) {
+                InstagramConnectView(onConnected: { instagramConnected = true })
+            }
+            .task { instagramConnected = await InstagramAuth.isConnected() }
             .sheet(isPresented: $showSimilarSheet) {
                 if let result = extractionResult, !result.alternatives.isEmpty {
                     SimilarRecipePreviewSheet(
@@ -408,6 +417,23 @@ struct ImportView: View {
             Image(systemName: icon).foregroundStyle(Color.scAccent)
             Text(label).font(.scBody).foregroundStyle(Color.scTextSecondary)
         }
+    }
+
+    /// Lets the user sign into Instagram once so reel captions can be read past the login
+    /// wall. Shows connected status; tapping re-opens the login (or to switch accounts).
+    private var connectInstagramButton: some View {
+        Button {
+            showConnectInstagram = true
+        } label: {
+            HStack(spacing: Spacing.xs) {
+                Image(systemName: instagramConnected ? "checkmark.seal.fill" : "person.crop.circle.badge.plus")
+                    .font(.system(size: 13))
+                Text(instagramConnected ? "Instagram connected" : "Connect Instagram for reels")
+                    .font(.scCaption)
+            }
+            .foregroundStyle(instagramConnected ? Color.green : Color.scTextSecondary)
+        }
+        .accessibilityHint("Sign in to Instagram to import recipes from reels")
     }
 
     private var importButton: some View {
