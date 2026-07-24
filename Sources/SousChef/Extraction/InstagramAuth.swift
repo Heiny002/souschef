@@ -47,9 +47,68 @@ enum InstagramAuth {
         + #""hoisted_comment_id":null,"hoisted_reply_id":null}"#
     }
 
-    /// Fetch the caption for a post via authenticated GraphQL. Returns nil when the user
-    /// isn't connected or the request fails (caller then falls back to logged-out routes).
+    /// Fetch the caption for a post. Tries the media-info API first (stable — no rotating
+    /// doc_id), then GraphQL. Returns nil when the user isn't connected or both fail.
     static func fetchCaption(shortcode: String) async -> String? {
+        if let caption = await fetchCaptionViaMediaAPI(shortcode: shortcode) { return caption }
+        return await fetchCaptionViaGraphQL(shortcode: shortcode)
+    }
+
+    /// Instagram shortcodes are base64 (URL-safe alphabet) of the numeric media id. Decode
+    /// it so we can hit /api/v1/media/{id}/info/ directly. Returns nil on an unexpected char
+    /// or (vanishingly rare) 64-bit overflow.
+    static func mediaID(fromShortcode code: String) -> String? {
+        let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        var index: [Character: UInt64] = [:]
+        for (i, c) in alphabet.enumerated() { index[c] = UInt64(i) }
+        var id: UInt64 = 0
+        for ch in code {
+            guard let v = index[ch] else { return nil }
+            let (mul, o1) = id.multipliedReportingOverflow(by: 64)
+            guard !o1 else { return nil }
+            let (add, o2) = mul.addingReportingOverflow(v)
+            guard !o2 else { return nil }
+            id = add
+        }
+        return String(id)
+    }
+
+    /// The stable authenticated route: Instagram's internal media-info API, keyed by the
+    /// media id derived from the shortcode — no rotating GraphQL doc_id involved. This is
+    /// the route that works today (verified end-to-end with the desktop tool).
+    static func fetchCaptionViaMediaAPI(shortcode: String) async -> String? {
+        let cookies = await sessionCookies()
+        guard cookies.contains(where: { $0.name == "sessionid" && !$0.value.isEmpty }),
+              let mediaID = mediaID(fromShortcode: shortcode),
+              let url = URL(string: "https://www.instagram.com/api/v1/media/\(mediaID)/info/")
+        else { return nil }
+
+        var request = URLRequest(url: url)
+        request.setValue(cookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; "),
+                         forHTTPHeaderField: "Cookie")
+        request.setValue(cookies.first { $0.name == "csrftoken" }?.value ?? "",
+                         forHTTPHeaderField: "X-CSRFToken")
+        request.setValue("936619743392459", forHTTPHeaderField: "X-IG-App-ID")
+        request.setValue("https://www.instagram.com/reel/\(shortcode)/", forHTTPHeaderField: "Referer")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+            + "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+            forHTTPHeaderField: "User-Agent")
+
+        let session = URLSession(configuration: .ephemeral)
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let items = json["items"] as? [[String: Any]], let first = items.first,
+              let caption = (first["caption"] as? [String: Any])?["text"] as? String,
+              !caption.isEmpty else { return nil }
+        return caption
+    }
+
+    /// Legacy authenticated GraphQL route. Instagram rotates the doc_id, so this dies
+    /// periodically — kept as a fallback behind the media API.
+    static func fetchCaptionViaGraphQL(shortcode: String) async -> String? {
         let cookies = await sessionCookies()
         guard cookies.contains(where: { $0.name == "sessionid" && !$0.value.isEmpty }),
               let url = URL(string: "https://www.instagram.com/graphql/query/") else { return nil }

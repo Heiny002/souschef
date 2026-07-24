@@ -144,6 +144,32 @@ final class PastedTextExtractorTests: XCTestCase {
         XCTAssertEqual(r.ingredients.first?.text, "")
     }
 
+    func testIngredientsHeaderButNoStepsHeader() {
+        // The common social-caption shape: an "Ingredients:" header, then the method as
+        // bare prose with no "Instructions" header. The steps must not be swept into the
+        // ingredient list (real regression from an Instagram import).
+        let text = """
+        Bruschetta Chicken
+
+        Ingredients:
+        • Chicken breast
+        • 2 tbsp olive oil
+        • Salt & pepper
+        • Fresh mozzarella
+
+        Set your oven to high broil.
+        Pound the chicken thin and coat it in the breadcrumbs.
+        Fry until golden on both sides.
+        Top with mozzarella and broil for 7 minutes.
+        """
+        let r = PastedTextExtractor().extract(text: text)
+        XCTAssertEqual(r.title, "Bruschetta Chicken")
+        XCTAssertEqual(r.ingredients.count, 4, "steps must not land in ingredients")
+        XCTAssertEqual(r.steps.count, 4)
+        XCTAssertEqual(r.steps.first?.text, "Set your oven to high broil.")
+        XCTAssertTrue(r.isViable)
+    }
+
     func testInlineNumberedStepsOnOneLine() {
         let text = """
         Toast

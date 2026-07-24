@@ -409,6 +409,18 @@ def looks_step(l):
     return len(s) > 60
 
 
+def is_step_transition(l):
+    """First prose-sentence line after an ingredient list — where steps begin when there's
+    no explicit steps header. Ingredient-shaped lines never trigger it."""
+    if looks_ing(l):
+        return False
+    s = strip_marker(l)
+    words = s.split()
+    if s.rstrip().endswith((".", "!", "?")) and len(words) >= 5:
+        return True
+    return looks_step(l)
+
+
 def sentence_split(p):
     return [x.strip() for x in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", p.strip()) if x.strip()]
 
@@ -461,13 +473,21 @@ def parse_recipe(text):
         if start is not None:
             end = step_i if (step_i is not None and step_i > start) else len(lines)
             cur = None
+            # When there's an ingredients header but NO steps header, the steps often
+            # follow the ingredient list as bare prose. Split at the first step-like line.
+            in_steps = False
             for i in range(start, end):
                 l = lines[i]
                 if not l.strip() or is_step_h(l) or is_ing_h(l):
                     continue
-                if is_sub(l):
+                if is_sub(l) and not in_steps:
                     cur = strip_marker(l).rstrip(":"); continue
-                ings.append((strip_marker(l), cur))
+                if step_i is None and not in_steps and is_step_transition(l):
+                    in_steps = True
+                if in_steps:
+                    steps.append(strip_marker(l))
+                else:
+                    ings.append((strip_marker(l), cur))
         if step_i is not None:
             block = [l.strip() for i in range(step_i + 1, len(lines)) for l in [lines[i]]
                      if l.strip() and not is_ing_h(l)]

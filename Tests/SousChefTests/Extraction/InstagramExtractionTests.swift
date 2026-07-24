@@ -233,6 +233,17 @@ final class InstagramExtractionTests: XCTestCase {
         XCTAssertNil(InstagramCaptionParser.parse(jsResult: #"{"og":"","ld":""}"#))
     }
 
+    // MARK: - Media id derivation (api/v1 route)
+
+    func testMediaIDFromShortcode() {
+        // Verified against Instagram's own api/v1 response for this reel.
+        XCTAssertEqual(InstagramAuth.mediaID(fromShortcode: "DaQXcT-R807"), "3931745575355534651")
+        // Round-trips: decoding then re-encoding the alphabet yields the same id.
+        XCTAssertEqual(InstagramAuth.mediaID(fromShortcode: "CGgDsi7JQdS"), "2422952854821341010")
+        // An out-of-alphabet character is rejected rather than mis-decoded.
+        XCTAssertNil(InstagramAuth.mediaID(fromShortcode: "bad!char"))
+    }
+
     // MARK: - Authenticated GraphQL variables
 
     func testGraphQLVariablesAreValidJSONWithShortcode() throws {

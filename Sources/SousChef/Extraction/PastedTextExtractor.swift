@@ -98,24 +98,37 @@ struct PastedTextExtractor {
         }
 
         var ingredients: [RawIngredient] = []
+        // Steps that follow the ingredient list with NO steps header (common in social
+        // captions) are recovered here by splitting the ingredient region at the first
+        // prose-sentence line.
+        var inlineStepLines: [String] = []
         if let start = ingStart {
             let end: Int
             if let s = stepHeaderIdx, s > start { end = s } else { end = lines.count }
             var currentSection: String?
+            var inSteps = false
             for i in start..<end {
                 let line = lines[i]
                 if line.isEmpty { continue }
                 if Self.isStepHeader(line) || Self.isIngredientHeader(line) { continue }
-                if Self.isSubsection(line) {
+                if Self.isSubsection(line), !inSteps {
                     currentSection = Self.stripMarker(line)
                         .trimmingCharacters(in: CharacterSet(charactersIn: ": "))
                     continue
                 }
-                ingredients.append(RawIngredient(text: Self.stripMarker(line), section: currentSection))
+                if stepHeaderIdx == nil, !inSteps, Self.isStepTransition(line) {
+                    inSteps = true
+                }
+                if inSteps {
+                    inlineStepLines.append(line)
+                } else {
+                    ingredients.append(RawIngredient(text: Self.stripMarker(line), section: currentSection))
+                }
             }
         }
 
-        // Step region: after the steps header to the end (or a stray ingredients header).
+        // Step region: an explicit steps header wins; otherwise use any inline steps split
+        // out of the ingredient region above.
         var steps: [RawStep] = []
         if let s = stepHeaderIdx {
             var block: [String] = []
@@ -126,6 +139,8 @@ struct PastedTextExtractor {
                 block.append(line)
             }
             steps = Self.assembleSteps(from: block)
+        } else if !inlineStepLines.isEmpty {
+            steps = Self.assembleSteps(from: inlineStepLines)
         }
 
         return (title, ingredients, steps)
@@ -248,6 +263,20 @@ struct PastedTextExtractor {
             if cookVerbs.contains(word) { return true }
         }
         return s.count > 60
+    }
+
+    /// First prose-sentence line after an ingredient list — where steps begin when a
+    /// caption has an ingredients header but no steps header. Ingredient-shaped lines never
+    /// trigger it, so a header-less bulleted list stays intact until the method starts.
+    static func isStepTransition(_ line: String) -> Bool {
+        if looksLikeIngredient(line) { return false }
+        let s = stripMarker(line)
+        let wordCount = s.split(separator: " ").count
+        if let last = s.trimmingCharacters(in: .whitespaces).last,
+           ".!?".contains(last), wordCount >= 5 {
+            return true
+        }
+        return looksLikeStep(line)
     }
 
     // MARK: - Yield + time
