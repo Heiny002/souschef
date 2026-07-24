@@ -225,6 +225,48 @@ def fetch_reel_page(code, cookies):
     return None, "no caption pattern found in page"
 
 
+_B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def shortcode_to_media_id(code):
+    """Instagram shortcodes are base64 of the numeric media id — decode it back."""
+    mid = 0
+    for ch in code:
+        if ch not in _B64:
+            return None
+        mid = mid * 64 + _B64.index(ch)
+    return mid
+
+
+def fetch_api_v1(code, cookies):
+    """Instagram's internal media-info API. Uses the media id derived from the shortcode,
+    so it doesn't depend on a rotating GraphQL doc_id — the more stable authenticated route."""
+    mid = shortcode_to_media_id(code)
+    if mid is None:
+        return None, "bad shortcode"
+    url = f"https://www.instagram.com/api/v1/media/{mid}/info/"
+    headers = {"User-Agent": UA, "X-IG-App-ID": "936619743392459",
+               "Referer": f"https://www.instagram.com/reel/{code}/",
+               "Accept": "application/json"}
+    if "csrftoken" in cookies:
+        headers["X-CSRFToken"] = cookies["csrftoken"]
+    try:
+        resp = _http_get(url, headers, cookies)
+        payload = json.loads(_read(resp).decode("utf-8", "ignore"))
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}"
+    except Exception as e:
+        return None, f"request error: {e}"
+    try:
+        items = payload.get("items") or []
+        if not items:
+            return None, "no items in response"
+        cap = (items[0].get("caption") or {}).get("text")
+        return (cap, "ok") if cap else (None, "item has no caption")
+    except Exception as e:
+        return None, f"parse error: {e}"
+
+
 def dump_raw(code, cookies):
     """Print raw response snippets so we can see what Instagram actually returns and fix
     the parser / doc_id accordingly."""
@@ -248,6 +290,38 @@ def dump_raw(code, cookies):
         print("   ", _read(resp).decode("utf-8", "ignore")[:900])
     except urllib.error.HTTPError as e:
         print(f"    HTTP {e.code}:", (e.read()[:400].decode("utf-8", "ignore") if e.fp else ""))
+    except Exception as e:
+        print("    error:", e)
+
+    # 1b. api/v1 media info raw
+    mid = shortcode_to_media_id(code)
+    print(f"\n[1b] api/v1/media/{mid}/info/ response (first 900 chars):")
+    try:
+        resp = _http_get(f"https://www.instagram.com/api/v1/media/{mid}/info/",
+                         {"User-Agent": UA, "X-IG-App-ID": "936619743392459",
+                          "Referer": f"https://www.instagram.com/reel/{code}/",
+                          "X-CSRFToken": cookies.get("csrftoken", "")}, cookies)
+        print("   ", _read(resp).decode("utf-8", "ignore")[:900])
+    except urllib.error.HTTPError as e:
+        print(f"    HTTP {e.code}:", (e.read()[:400].decode("utf-8", "ignore") if e.fp else ""))
+    except Exception as e:
+        print("    error:", e)
+
+    # 1c. embed page raw
+    print("\n[1c] embed/captioned page:")
+    try:
+        resp = _http_get(f"https://www.instagram.com/p/{code}/embed/captioned/",
+                         {"User-Agent": UA, "Referer": "https://www.instagram.com/"}, cookies)
+        html = _read(resp).decode("utf-8", "ignore")
+        print(f"    length={len(html)} chars")
+        for needle in ('gql_data', 'class="Caption"', 'edge_media_to_caption', 'caption', 'EmbedIsBroken', 'WatchOnInstagram'):
+            i = html.find(needle)
+            if i >= 0:
+                print(f"    '{needle}' @ {i}:  {html[i:i + 200]}".replace("\n", " "))
+            else:
+                print(f"    '{needle}': NOT FOUND")
+    except urllib.error.HTTPError as e:
+        print(f"    HTTP {e.code}")
     except Exception as e:
         print("    error:", e)
 
@@ -461,8 +535,8 @@ def main():
 
     print("\n=== ROUTES ===")
     caption = None
-    for name, fn in [("embed/captioned", fetch_embed), ("graphql", fetch_graphql),
-                     ("reel page", fetch_reel_page)]:
+    for name, fn in [("api/v1 media info", fetch_api_v1), ("embed/captioned", fetch_embed),
+                     ("graphql", fetch_graphql), ("reel page", fetch_reel_page)]:
         cap, status = fn(code, cookies)
         got = f"{len(cap)} chars" if cap else "—"
         print(f"  {name:18} {status:45} {got}")
