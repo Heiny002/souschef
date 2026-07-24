@@ -16,14 +16,18 @@ Getting cookies.txt (for the authenticated route): log into instagram.com in a b
 export cookies with a "Get cookies.txt" extension (Netscape format). This is the desktop
 equivalent of the app's "Connect Instagram" — it gets past the login wall the same way.
 
-Requires `requests`:  pip3 install requests
+No dependencies — uses only the Python standard library, so it just runs.
 """
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import re
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
@@ -87,16 +91,47 @@ def _gql_caption_from_embed(html: str):
     return None
 
 
-def fetch_embed(requests, code, cookies):
+def _cookie_header(cookies):
+    return "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+
+def _read(resp):
+    """Read a urllib response, transparently gunzipping if needed."""
+    raw = resp.read()
+    if resp.headers.get("Content-Encoding") == "gzip":
+        raw = gzip.decompress(raw)
+    return raw
+
+
+def _http_get(url, headers, cookies):
+    h = dict(headers)
+    h.setdefault("Accept-Encoding", "identity")
+    if cookies:
+        h["Cookie"] = _cookie_header(cookies)
+    req = urllib.request.Request(url, headers=h)
+    return urllib.request.urlopen(req, timeout=20)
+
+
+def _http_post(url, form, headers, cookies):
+    h = dict(headers)
+    h.setdefault("Accept-Encoding", "identity")
+    if cookies:
+        h["Cookie"] = _cookie_header(cookies)
+    body = urllib.parse.urlencode(form).encode()
+    req = urllib.request.Request(url, data=body, headers=h, method="POST")
+    return urllib.request.urlopen(req, timeout=20)
+
+
+def fetch_embed(code, cookies):
     url = f"https://www.instagram.com/p/{code}/embed/captioned/"
     try:
-        r = requests.get(url, headers={"User-Agent": UA, "Referer": "https://www.instagram.com/"},
-                         cookies=cookies, timeout=20)
+        resp = _http_get(url, {"User-Agent": UA, "Referer": "https://www.instagram.com/",
+                               "Accept-Language": "en-US,en;q=0.9"}, cookies)
+        html = _read(resp).decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}"
     except Exception as e:
         return None, f"request error: {e}"
-    if r.status_code != 200:
-        return None, f"HTTP {r.status_code}"
-    html = r.text
     cap = _gql_caption_from_embed(html)
     if cap:
         return cap, "ok (gql_data)"
@@ -113,7 +148,7 @@ def fetch_embed(requests, code, cookies):
     return None, "no caption in page"
 
 
-def fetch_graphql(requests, code, cookies):
+def fetch_graphql(code, cookies):
     variables = json.dumps({
         "shortcode": code, "fetch_comment_count": 0, "parent_comment_count": 0,
         "child_comment_count": 0, "fetch_like_count": 0, "fetch_tagged_user_count": None,
@@ -128,15 +163,15 @@ def fetch_graphql(requests, code, cookies):
     if "csrftoken" in cookies:
         headers["X-CSRFToken"] = cookies["csrftoken"]
     try:
-        r = requests.post("https://www.instagram.com/graphql/query/",
-                          data={"doc_id": DOC_ID, "variables": variables},
-                          headers=headers, cookies=cookies, timeout=20)
+        resp = _http_post("https://www.instagram.com/graphql/query/",
+                          {"doc_id": DOC_ID, "variables": variables}, headers, cookies)
+        payload = json.loads(_read(resp).decode("utf-8", "ignore"))
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}"
     except Exception as e:
         return None, f"request error: {e}"
-    if r.status_code != 200:
-        return None, f"HTTP {r.status_code}"
     try:
-        data = r.json().get("data") or {}
+        data = payload.get("data") or {}
         media = data.get("xdt_shortcode_media") or data.get("shortcode_media")
         if not media:
             return None, "no shortcode_media (needs login, or doc_id is stale)"
@@ -146,6 +181,169 @@ def fetch_graphql(requests, code, cookies):
         return None, "empty caption field"
     except Exception as e:
         return None, f"parse error: {e}"
+
+
+def _caption_from_page(html):
+    """Find the caption in a logged-in reel page's embedded JSON (or og:description)."""
+    for pat in (
+        r'"edge_media_to_caption":\{"edges":\[\{"node":\{"text":"((?:[^"\\]|\\.)*)"',
+        r'"caption":\{[^{}]*?"text":"((?:[^"\\]|\\.)*)"',
+        r'\\"edge_media_to_caption\\":\{\\"edges\\":\[\{\\"node\\":\{\\"text\\":\\"((?:[^"\\]|\\.)*?)\\"',
+    ):
+        m = re.search(pat, html)
+        if m:
+            try:
+                return json.loads('"' + m.group(1) + '"')
+            except Exception:
+                try:
+                    return json.loads('"' + m.group(1).replace('\\\\"', '\\"') + '"')
+                except Exception:
+                    continue
+    m = re.search(r'<meta property="og:description" content="([^"]*)"', html)
+    if m:
+        return m.group(1)
+    return None
+
+
+def fetch_reel_page(code, cookies):
+    """Fetch the full reel page (logged-in) and read the caption from its embedded JSON —
+    sidesteps the GraphQL doc_id entirely."""
+    url = f"https://www.instagram.com/reel/{code}/"
+    headers = {"User-Agent": UA,
+               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+               "Accept-Language": "en-US,en;q=0.9", "Referer": "https://www.instagram.com/"}
+    try:
+        resp = _http_get(url, headers, cookies)
+        html = _read(resp).decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}"
+    except Exception as e:
+        return None, f"request error: {e}"
+    cap = _caption_from_page(html)
+    if cap:
+        return cap, "ok"
+    return None, "no caption pattern found in page"
+
+
+_B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def shortcode_to_media_id(code):
+    """Instagram shortcodes are base64 of the numeric media id — decode it back."""
+    mid = 0
+    for ch in code:
+        if ch not in _B64:
+            return None
+        mid = mid * 64 + _B64.index(ch)
+    return mid
+
+
+def fetch_api_v1(code, cookies):
+    """Instagram's internal media-info API. Uses the media id derived from the shortcode,
+    so it doesn't depend on a rotating GraphQL doc_id — the more stable authenticated route."""
+    mid = shortcode_to_media_id(code)
+    if mid is None:
+        return None, "bad shortcode"
+    url = f"https://www.instagram.com/api/v1/media/{mid}/info/"
+    headers = {"User-Agent": UA, "X-IG-App-ID": "936619743392459",
+               "Referer": f"https://www.instagram.com/reel/{code}/",
+               "Accept": "application/json"}
+    if "csrftoken" in cookies:
+        headers["X-CSRFToken"] = cookies["csrftoken"]
+    try:
+        resp = _http_get(url, headers, cookies)
+        payload = json.loads(_read(resp).decode("utf-8", "ignore"))
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}"
+    except Exception as e:
+        return None, f"request error: {e}"
+    try:
+        items = payload.get("items") or []
+        if not items:
+            return None, "no items in response"
+        cap = (items[0].get("caption") or {}).get("text")
+        return (cap, "ok") if cap else (None, "item has no caption")
+    except Exception as e:
+        return None, f"parse error: {e}"
+
+
+def dump_raw(code, cookies):
+    """Print raw response snippets so we can see what Instagram actually returns and fix
+    the parser / doc_id accordingly."""
+    print("\n=== RAW DIAGNOSTICS ===")
+
+    # 1. graphql raw body
+    variables = json.dumps({"shortcode": code, "fetch_comment_count": 0, "parent_comment_count": 0,
+                            "child_comment_count": 0, "fetch_like_count": 0,
+                            "fetch_tagged_user_count": None, "fetch_preview_comment_count": 0,
+                            "has_threaded_comments": True, "hoisted_comment_id": None,
+                            "hoisted_reply_id": None})
+    headers = {"User-Agent": UA, "X-IG-App-ID": "936619743392459",
+               "Referer": "https://www.instagram.com/",
+               "Content-Type": "application/x-www-form-urlencoded"}
+    if "csrftoken" in cookies:
+        headers["X-CSRFToken"] = cookies["csrftoken"]
+    print("\n[1] graphql/query response (first 900 chars):")
+    try:
+        resp = _http_post("https://www.instagram.com/graphql/query/",
+                          {"doc_id": DOC_ID, "variables": variables}, headers, cookies)
+        print("   ", _read(resp).decode("utf-8", "ignore")[:900])
+    except urllib.error.HTTPError as e:
+        print(f"    HTTP {e.code}:", (e.read()[:400].decode("utf-8", "ignore") if e.fp else ""))
+    except Exception as e:
+        print("    error:", e)
+
+    # 1b. api/v1 media info raw
+    mid = shortcode_to_media_id(code)
+    print(f"\n[1b] api/v1/media/{mid}/info/ response (first 900 chars):")
+    try:
+        resp = _http_get(f"https://www.instagram.com/api/v1/media/{mid}/info/",
+                         {"User-Agent": UA, "X-IG-App-ID": "936619743392459",
+                          "Referer": f"https://www.instagram.com/reel/{code}/",
+                          "X-CSRFToken": cookies.get("csrftoken", "")}, cookies)
+        print("   ", _read(resp).decode("utf-8", "ignore")[:900])
+    except urllib.error.HTTPError as e:
+        print(f"    HTTP {e.code}:", (e.read()[:400].decode("utf-8", "ignore") if e.fp else ""))
+    except Exception as e:
+        print("    error:", e)
+
+    # 1c. embed page raw
+    print("\n[1c] embed/captioned page:")
+    try:
+        resp = _http_get(f"https://www.instagram.com/p/{code}/embed/captioned/",
+                         {"User-Agent": UA, "Referer": "https://www.instagram.com/"}, cookies)
+        html = _read(resp).decode("utf-8", "ignore")
+        print(f"    length={len(html)} chars")
+        for needle in ('gql_data', 'class="Caption"', 'edge_media_to_caption', 'caption', 'EmbedIsBroken', 'WatchOnInstagram'):
+            i = html.find(needle)
+            if i >= 0:
+                print(f"    '{needle}' @ {i}:  {html[i:i + 200]}".replace("\n", " "))
+            else:
+                print(f"    '{needle}': NOT FOUND")
+    except urllib.error.HTTPError as e:
+        print(f"    HTTP {e.code}")
+    except Exception as e:
+        print("    error:", e)
+
+    # 2. reel page structure
+    print("\n[2] reel page /reel/<code>/ :")
+    try:
+        resp = _http_get(f"https://www.instagram.com/reel/{code}/",
+                         {"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"}, cookies)
+        html = _read(resp).decode("utf-8", "ignore")
+        print(f"    length={len(html)} chars, 'log in'/'password' present: "
+              f"{'log in' in html.lower()}/{'password' in html.lower()}")
+        for needle in ('edge_media_to_caption', '"caption"', 'og:description', 'xdt_shortcode_media'):
+            i = html.find(needle)
+            if i >= 0:
+                snip = html[i:i + 220].replace("\n", " ")
+                print(f"    '{needle}' @ {i}:  {snip}")
+            else:
+                print(f"    '{needle}': NOT FOUND")
+    except urllib.error.HTTPError as e:
+        print(f"    HTTP {e.code}")
+    except Exception as e:
+        print("    error:", e)
 
 
 # ------------------------------------------------------- recipe parser (port of Swift)
@@ -211,6 +409,18 @@ def looks_step(l):
     return len(s) > 60
 
 
+def is_step_transition(l):
+    """First prose-sentence line after an ingredient list — where steps begin when there's
+    no explicit steps header. Ingredient-shaped lines never trigger it."""
+    if looks_ing(l):
+        return False
+    s = strip_marker(l)
+    words = s.split()
+    if s.rstrip().endswith((".", "!", "?")) and len(words) >= 5:
+        return True
+    return looks_step(l)
+
+
 def sentence_split(p):
     return [x.strip() for x in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", p.strip()) if x.strip()]
 
@@ -263,13 +473,21 @@ def parse_recipe(text):
         if start is not None:
             end = step_i if (step_i is not None and step_i > start) else len(lines)
             cur = None
+            # When there's an ingredients header but NO steps header, the steps often
+            # follow the ingredient list as bare prose. Split at the first step-like line.
+            in_steps = False
             for i in range(start, end):
                 l = lines[i]
                 if not l.strip() or is_step_h(l) or is_ing_h(l):
                     continue
-                if is_sub(l):
+                if is_sub(l) and not in_steps:
                     cur = strip_marker(l).rstrip(":"); continue
-                ings.append((strip_marker(l), cur))
+                if step_i is None and not in_steps and is_step_transition(l):
+                    in_steps = True
+                if in_steps:
+                    steps.append(strip_marker(l))
+                else:
+                    ings.append((strip_marker(l), cur))
         if step_i is not None:
             block = [l.strip() for i in range(step_i + 1, len(lines)) for l in [lines[i]]
                      if l.strip() and not is_ing_h(l)]
@@ -317,6 +535,8 @@ def main():
     ap.add_argument("url", nargs="?", help="Instagram reel/post URL")
     ap.add_argument("--cookies", help="Netscape cookies.txt for authenticated fetch")
     ap.add_argument("--caption-file", help="Skip fetching; parse a caption from this file")
+    ap.add_argument("--raw", action="store_true",
+                    help="Dump raw response snippets (to diagnose why routes fail)")
     args = ap.parse_args()
 
     if args.caption_file:
@@ -325,11 +545,6 @@ def main():
 
     if not args.url:
         ap.error("provide a URL, or --caption-file")
-
-    try:
-        import requests
-    except ImportError:
-        sys.exit("Missing 'requests'. Install with:  pip3 install requests")
 
     code = shortcode(args.url)
     if not code:
@@ -340,10 +555,11 @@ def main():
 
     print("\n=== ROUTES ===")
     caption = None
-    for name, fn in [("embed/captioned", fetch_embed), ("graphql", fetch_graphql)]:
-        cap, status = fn(requests, code, cookies)
+    for name, fn in [("api/v1 media info", fetch_api_v1), ("embed/captioned", fetch_embed),
+                     ("graphql", fetch_graphql), ("reel page", fetch_reel_page)]:
+        cap, status = fn(code, cookies)
         got = f"{len(cap)} chars" if cap else "—"
-        print(f"  {name:18} {status:40} {got}")
+        print(f"  {name:18} {status:45} {got}")
         if cap and not caption:
             caption = cap
 
@@ -352,7 +568,10 @@ def main():
     else:
         print("\nNo caption retrieved by any route.")
         print("If you're logged out, pass --cookies cookies.txt. If you ARE logged in and it")
-        print("still fails, the doc_id may have rotated — tell Claude and we'll refresh it.")
+        print("still fails, re-run with --raw and send Claude the output.")
+
+    if args.raw:
+        dump_raw(code, cookies)
 
 
 if __name__ == "__main__":
