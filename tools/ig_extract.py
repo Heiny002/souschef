@@ -16,14 +16,18 @@ Getting cookies.txt (for the authenticated route): log into instagram.com in a b
 export cookies with a "Get cookies.txt" extension (Netscape format). This is the desktop
 equivalent of the app's "Connect Instagram" — it gets past the login wall the same way.
 
-Requires `requests`:  pip3 install requests
+No dependencies — uses only the Python standard library, so it just runs.
 """
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import re
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
@@ -87,16 +91,47 @@ def _gql_caption_from_embed(html: str):
     return None
 
 
-def fetch_embed(requests, code, cookies):
+def _cookie_header(cookies):
+    return "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+
+def _read(resp):
+    """Read a urllib response, transparently gunzipping if needed."""
+    raw = resp.read()
+    if resp.headers.get("Content-Encoding") == "gzip":
+        raw = gzip.decompress(raw)
+    return raw
+
+
+def _http_get(url, headers, cookies):
+    h = dict(headers)
+    h.setdefault("Accept-Encoding", "identity")
+    if cookies:
+        h["Cookie"] = _cookie_header(cookies)
+    req = urllib.request.Request(url, headers=h)
+    return urllib.request.urlopen(req, timeout=20)
+
+
+def _http_post(url, form, headers, cookies):
+    h = dict(headers)
+    h.setdefault("Accept-Encoding", "identity")
+    if cookies:
+        h["Cookie"] = _cookie_header(cookies)
+    body = urllib.parse.urlencode(form).encode()
+    req = urllib.request.Request(url, data=body, headers=h, method="POST")
+    return urllib.request.urlopen(req, timeout=20)
+
+
+def fetch_embed(code, cookies):
     url = f"https://www.instagram.com/p/{code}/embed/captioned/"
     try:
-        r = requests.get(url, headers={"User-Agent": UA, "Referer": "https://www.instagram.com/"},
-                         cookies=cookies, timeout=20)
+        resp = _http_get(url, {"User-Agent": UA, "Referer": "https://www.instagram.com/",
+                               "Accept-Language": "en-US,en;q=0.9"}, cookies)
+        html = _read(resp).decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}"
     except Exception as e:
         return None, f"request error: {e}"
-    if r.status_code != 200:
-        return None, f"HTTP {r.status_code}"
-    html = r.text
     cap = _gql_caption_from_embed(html)
     if cap:
         return cap, "ok (gql_data)"
@@ -113,7 +148,7 @@ def fetch_embed(requests, code, cookies):
     return None, "no caption in page"
 
 
-def fetch_graphql(requests, code, cookies):
+def fetch_graphql(code, cookies):
     variables = json.dumps({
         "shortcode": code, "fetch_comment_count": 0, "parent_comment_count": 0,
         "child_comment_count": 0, "fetch_like_count": 0, "fetch_tagged_user_count": None,
@@ -128,15 +163,15 @@ def fetch_graphql(requests, code, cookies):
     if "csrftoken" in cookies:
         headers["X-CSRFToken"] = cookies["csrftoken"]
     try:
-        r = requests.post("https://www.instagram.com/graphql/query/",
-                          data={"doc_id": DOC_ID, "variables": variables},
-                          headers=headers, cookies=cookies, timeout=20)
+        resp = _http_post("https://www.instagram.com/graphql/query/",
+                          {"doc_id": DOC_ID, "variables": variables}, headers, cookies)
+        payload = json.loads(_read(resp).decode("utf-8", "ignore"))
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}"
     except Exception as e:
         return None, f"request error: {e}"
-    if r.status_code != 200:
-        return None, f"HTTP {r.status_code}"
     try:
-        data = r.json().get("data") or {}
+        data = payload.get("data") or {}
         media = data.get("xdt_shortcode_media") or data.get("shortcode_media")
         if not media:
             return None, "no shortcode_media (needs login, or doc_id is stale)"
@@ -326,11 +361,6 @@ def main():
     if not args.url:
         ap.error("provide a URL, or --caption-file")
 
-    try:
-        import requests
-    except ImportError:
-        sys.exit("Missing 'requests'. Install with:  pip3 install requests")
-
     code = shortcode(args.url)
     if not code:
         sys.exit("Could not find a shortcode in that URL.")
@@ -341,7 +371,7 @@ def main():
     print("\n=== ROUTES ===")
     caption = None
     for name, fn in [("embed/captioned", fetch_embed), ("graphql", fetch_graphql)]:
-        cap, status = fn(requests, code, cookies)
+        cap, status = fn(code, cookies)
         got = f"{len(cap)} chars" if cap else "—"
         print(f"  {name:18} {status:40} {got}")
         if cap and not caption:
