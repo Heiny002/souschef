@@ -155,6 +155,11 @@ actor ExtractionPipeline {
             return empty
         }
 
+        // The Anthropic key (if the developer added Secrets.xcconfig) powers two optional
+        // steps below: LLM caption structuring and the transcript validator. Read once.
+        let apiKey = (Bundle.main.infoDictionary?["ANTHROPIC_API_KEY"] as? String)
+            .flatMap { $0.isEmpty ? nil : $0 }
+
         // A written caption (Instagram/TikTok) is structured recipe text, so parse it with the
         // same parser as paste/scan — it handles "Ingredients:/Instructions:" layouts far better
         // than the spoken-word transcript extractor. Keep whichever candidate is richer.
@@ -166,6 +171,26 @@ actor ExtractionPipeline {
                 result = pasted
             }
         }
+
+        // Step 3.5: LLM caption structuring (Option A). Rule-based parsing hits a ceiling on
+        // messy social captions — run-on ingredient groups under sub-labels, inline-numbered
+        // steps, marketing narrative and hashtags — and can produce a viable-but-wrong split.
+        // When a key is present, let Claude structure the RAW caption (how ReciMe / OrganizEat-
+        // class apps do it). Take it only when it's at least as complete as the deterministic
+        // parse, so an off-day LLM response can't regress a caption the parser already nailed.
+        // No key / failure → deterministic result stands (offline-safe fallback).
+        if let apiKey, !captionText.isEmpty, captionText.count >= 40 {
+            progress?("Structuring the recipe…")
+            let structurer = LLMCaptionStructurer(apiKey: apiKey)
+            if let llm = try? await structurer.structure(caption: captionText, titleHint: titleHint),
+               llm.isViable, Self.completeness(llm) >= Self.completeness(result) {
+                result = llm
+                debugTrace.append("LLM structurer: \(llm.ingredients.count) ingredients, \(llm.steps.count) steps")
+            } else {
+                debugTrace.append("LLM structurer: kept deterministic parse")
+            }
+        }
+
         // Attach provenance + photo so a caption-parsed import still shows its Instagram badge,
         // source link and thumbnail (regardless of which extractor won).
         result.originalSourceURL = urlString
@@ -174,11 +199,10 @@ actor ExtractionPipeline {
 
         guard result.confidence < ConfidenceThreshold.accept else { return result }
 
-        // Step 4: Layer 6 — LLM validation / fallback
-        guard let apiKey = Bundle.main.infoDictionary?["ANTHROPIC_API_KEY"] as? String,
-              !apiKey.isEmpty else {
-            return result
-        }
+        // Step 4: Layer 6 — LLM validation / fallback (transcript-oriented). The caption
+        // structurer above already ran when a key was present; this backstops transcript-only
+        // imports and captions the structurer couldn't lift over the accept threshold.
+        guard let apiKey else { return result }
         let validator = TranscriptLLMValidator(apiKey: apiKey)
         result = (try? await validator.validate(transcript: fullText, partial: result)) ?? result
 

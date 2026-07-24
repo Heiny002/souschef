@@ -23,6 +23,7 @@
 		FEED0000000000000000CF09 /* RecipeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF0A /* RecipeScannerView.swift */; };
 		FEED0000000000000000CF03 /* PastedTextExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF04 /* PastedTextExtractorTests.swift */; };
 		FEED0000000000000000CF0B /* InstagramExtractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF0C /* InstagramExtractionTests.swift */; };
+		FEED0000000000000000CB01 /* LLMCaptionStructurerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CB02 /* LLMCaptionStructurerTests.swift */; };
 		FEED0000000000000000AB01 /* CookTimerStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000AB02 /* CookTimerStateTests.swift */; };
 		217A8C3E81B3A1B165CBAEB2 /* CaptionAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 124A4D2FF0344B802F56263E /* CaptionAnalyzer.swift */; };
 		21A36AEB84A1CF6CF499FD33 /* VideoMetadataFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6927B3D6996D01FA9163A5 /* VideoMetadataFetcher.swift */; };
@@ -62,6 +63,7 @@
 		FEED0000000000000000CC01 /* TimerDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CC02 /* TimerDetectorTests.swift */; };
 		FEED0000000000000000BB01 /* StepSequencerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000BB02 /* StepSequencerTests.swift */; };
 		A023C66ED92EFC1D105BE252 /* LLMExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DC8E8C8944E55C1F03DC6D /* LLMExtractor.swift */; };
+		FEED0000000000000000CA01 /* LLMCaptionStructurer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CA02 /* LLMCaptionStructurer.swift */; };
 		A71D307287F47F12A1420796 /* TranscriptLLMValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9ACA7716EC503F142D4F8B /* TranscriptLLMValidator.swift */; };
 		A766F0A96DF26B2BCB4D44CF /* NaturalLanguage.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2D75D10443D97C18648ED646 /* NaturalLanguage.framework */; };
 		AEA99155ABF7813A92A3D68B /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D50B80500111014D6719A3A /* DesignSystem.swift */; };
@@ -95,6 +97,7 @@
 
 /* Begin PBXFileReference section */
 		01DC8E8C8944E55C1F03DC6D /* LLMExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMExtractor.swift; sourceTree = "<group>"; };
+		FEED0000000000000000CA02 /* LLMCaptionStructurer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMCaptionStructurer.swift; sourceTree = "<group>"; };
 		07D492E365A4AB46C47203BF /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
 		124A4D2FF0344B802F56263E /* CaptionAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptionAnalyzer.swift; sourceTree = "<group>"; };
 		1361638A120B61026F00DCC7 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
@@ -151,6 +154,7 @@
 		FEED0000000000000000CF0A /* RecipeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeScannerView.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF04 /* PastedTextExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastedTextExtractorTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF0C /* InstagramExtractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramExtractionTests.swift; sourceTree = "<group>"; };
+		FEED0000000000000000CB02 /* LLMCaptionStructurerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMCaptionStructurerTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000AB02 /* CookTimerStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookTimerStateTests.swift; sourceTree = "<group>"; };
 		A84D65E08565F7B6F18BB383 /* RecipeValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeValidator.swift; sourceTree = "<group>"; };
 		AB6927B3D6996D01FA9163A5 /* VideoMetadataFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoMetadataFetcher.swift; sourceTree = "<group>"; };
@@ -286,6 +290,7 @@
 				FEED0000000000000000CD02 /* ParserFixesTests.swift */,
 				FEED0000000000000000CF04 /* PastedTextExtractorTests.swift */,
 				FEED0000000000000000CF0C /* InstagramExtractionTests.swift */,
+				FEED0000000000000000CB02 /* LLMCaptionStructurerTests.swift */,
 			);
 			path = Extraction;
 			sourceTree = "<group>";
@@ -401,6 +406,7 @@
 				644C35F47DEA2B69B329D45D /* IngredientParser.swift */,
 				BBD4C75A2449648C9F438129 /* ISO8601DurationParser.swift */,
 				01DC8E8C8944E55C1F03DC6D /* LLMExtractor.swift */,
+				FEED0000000000000000CA02 /* LLMCaptionStructurer.swift */,
 				82FF8F6B3A0D2953DB61A55C /* MicrodataExtractor.swift */,
 				D6E7F8091A2B3C4D5E6F7081 /* IngredientAnnotator.swift */,
 				7560654AFD354C4655DEEC21 /* MicroStepSplitter.swift */,
@@ -564,6 +570,7 @@
 				770096E2E77B7A0BE022D571 /* IngredientConverter.swift in Sources */,
 				5D1C602B043AD370184C67AE /* IngredientParser.swift in Sources */,
 				A023C66ED92EFC1D105BE252 /* LLMExtractor.swift in Sources */,
+				FEED0000000000000000CA01 /* LLMCaptionStructurer.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* IngredientAnnotator.swift in Sources */,
 				9E4BF5BA4F11E86F358EF5FF /* MicroStepSplitter.swift in Sources */,
 				FEED0000000000000000AA01 /* StepSequencer.swift in Sources */,
@@ -606,6 +613,7 @@
 				FEED0000000000000000AB01 /* CookTimerStateTests.swift in Sources */,
 				FEED0000000000000000CF03 /* PastedTextExtractorTests.swift in Sources */,
 				FEED0000000000000000CF0B /* InstagramExtractionTests.swift in Sources */,
+				FEED0000000000000000CB01 /* LLMCaptionStructurerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
