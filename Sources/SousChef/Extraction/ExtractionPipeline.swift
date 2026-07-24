@@ -38,28 +38,38 @@ actor ExtractionPipeline {
     private func extractFromVideo(urlString: String, progress: (@Sendable (String) -> Void)? = nil) async -> ExtractionResult {
         let metadataFetcher = VideoMetadataFetcher()
 
+        // Testing aid: record which Instagram route returned what, surfaced on the failure
+        // screen so we can see where extraction breaks without an Xcode rebuild.
+        var debugTrace: [String] = []
+
         // Step 1: oEmbed for caption / title (free, no auth)
         let metadata = try? await metadataFetcher.fetch(videoURL: urlString)
         var captionText = metadata?.caption ?? ""
         let titleHint = metadata?.title
+        debugTrace.append("metadata caption: \(captionText.isEmpty ? "—" : "\(captionText.count) chars")")
 
         // Step 1b: Instagram fallbacks when the logged-out URLSession routes came back empty.
         if captionText.isEmpty, URLRouter.classify(urlString) == .instagram {
             let shortcode = VideoMetadataFetcher.instagramShortcode(from: urlString)
+            let connected = await InstagramAuth.isConnected()
+            debugTrace.append("shortcode: \(shortcode ?? "nil")")
+            debugTrace.append("IG connected: \(connected)")
 
             // Best route: authenticated GraphQL using the user's in-app Instagram session
             // (see InstagramConnectView). Returns the full caption past the login wall.
-            if let shortcode, let authCaption = await InstagramAuth.fetchCaption(shortcode: shortcode) {
-                captionText = authCaption
+            if let shortcode {
+                let authCaption = await InstagramAuth.fetchCaption(shortcode: shortcode)
+                debugTrace.append("auth GraphQL: \(authCaption.map { "\($0.count) chars" } ?? "nil")")
+                if let authCaption { captionText = authCaption }
             }
 
             // Logged-out real-browser fallback: an off-screen WKWebView reads the caption
             // from link-preview metadata. Works for some public posts; may be partial.
             if captionText.isEmpty, let url = URL(string: urlString) {
                 progress?("Opening the post…")
-                if let webCaption = await InstagramWebViewExtractor.caption(from: url) {
-                    captionText = webCaption
-                }
+                let webCaption = await InstagramWebViewExtractor.caption(from: url)
+                debugTrace.append("WKWebView: \(webCaption.map { "\($0.count) chars" } ?? "nil")")
+                if let webCaption { captionText = webCaption }
             }
         }
 
@@ -273,6 +283,12 @@ actor ExtractionPipeline {
             result.authorHint = searchAuthorName
             result.thumbnailURL = metadata?.thumbnailURL
         }
+
+        // Testing aid: attach the fetch trace + parse outcome so the failure screen shows
+        // exactly where extraction broke (which route got the caption, what parsed out).
+        debugTrace.append("final caption: \(captionText.isEmpty ? "—" : "\(captionText.count) chars")")
+        debugTrace.append("parsed: \(result.ingredients.count) ingredients, \(result.steps.count) steps, viable=\(result.isViable)")
+        result.debugInfo = debugTrace.joined(separator: "\n")
 
         return result
     }

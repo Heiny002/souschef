@@ -20,6 +20,7 @@ struct ExtractionResult: Sendable {
     var alternatives: [ExtractionResult] = []  // similar recipes collected when primary extraction fails
     var captionPreview: String?          // snippet of searched text shown in failure UI
     var authorHint: String?              // creator name/handle for failure UI copy
+    var debugInfo: String?               // testing aid: which fetch routes ran + what they returned
 
     init(extractionMethod: String) {
         self.ingredients = []
