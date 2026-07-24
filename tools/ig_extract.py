@@ -183,6 +183,95 @@ def fetch_graphql(code, cookies):
         return None, f"parse error: {e}"
 
 
+def _caption_from_page(html):
+    """Find the caption in a logged-in reel page's embedded JSON (or og:description)."""
+    for pat in (
+        r'"edge_media_to_caption":\{"edges":\[\{"node":\{"text":"((?:[^"\\]|\\.)*)"',
+        r'"caption":\{[^{}]*?"text":"((?:[^"\\]|\\.)*)"',
+        r'\\"edge_media_to_caption\\":\{\\"edges\\":\[\{\\"node\\":\{\\"text\\":\\"((?:[^"\\]|\\.)*?)\\"',
+    ):
+        m = re.search(pat, html)
+        if m:
+            try:
+                return json.loads('"' + m.group(1) + '"')
+            except Exception:
+                try:
+                    return json.loads('"' + m.group(1).replace('\\\\"', '\\"') + '"')
+                except Exception:
+                    continue
+    m = re.search(r'<meta property="og:description" content="([^"]*)"', html)
+    if m:
+        return m.group(1)
+    return None
+
+
+def fetch_reel_page(code, cookies):
+    """Fetch the full reel page (logged-in) and read the caption from its embedded JSON —
+    sidesteps the GraphQL doc_id entirely."""
+    url = f"https://www.instagram.com/reel/{code}/"
+    headers = {"User-Agent": UA,
+               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+               "Accept-Language": "en-US,en;q=0.9", "Referer": "https://www.instagram.com/"}
+    try:
+        resp = _http_get(url, headers, cookies)
+        html = _read(resp).decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}"
+    except Exception as e:
+        return None, f"request error: {e}"
+    cap = _caption_from_page(html)
+    if cap:
+        return cap, "ok"
+    return None, "no caption pattern found in page"
+
+
+def dump_raw(code, cookies):
+    """Print raw response snippets so we can see what Instagram actually returns and fix
+    the parser / doc_id accordingly."""
+    print("\n=== RAW DIAGNOSTICS ===")
+
+    # 1. graphql raw body
+    variables = json.dumps({"shortcode": code, "fetch_comment_count": 0, "parent_comment_count": 0,
+                            "child_comment_count": 0, "fetch_like_count": 0,
+                            "fetch_tagged_user_count": None, "fetch_preview_comment_count": 0,
+                            "has_threaded_comments": True, "hoisted_comment_id": None,
+                            "hoisted_reply_id": None})
+    headers = {"User-Agent": UA, "X-IG-App-ID": "936619743392459",
+               "Referer": "https://www.instagram.com/",
+               "Content-Type": "application/x-www-form-urlencoded"}
+    if "csrftoken" in cookies:
+        headers["X-CSRFToken"] = cookies["csrftoken"]
+    print("\n[1] graphql/query response (first 900 chars):")
+    try:
+        resp = _http_post("https://www.instagram.com/graphql/query/",
+                          {"doc_id": DOC_ID, "variables": variables}, headers, cookies)
+        print("   ", _read(resp).decode("utf-8", "ignore")[:900])
+    except urllib.error.HTTPError as e:
+        print(f"    HTTP {e.code}:", (e.read()[:400].decode("utf-8", "ignore") if e.fp else ""))
+    except Exception as e:
+        print("    error:", e)
+
+    # 2. reel page structure
+    print("\n[2] reel page /reel/<code>/ :")
+    try:
+        resp = _http_get(f"https://www.instagram.com/reel/{code}/",
+                         {"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"}, cookies)
+        html = _read(resp).decode("utf-8", "ignore")
+        print(f"    length={len(html)} chars, 'log in'/'password' present: "
+              f"{'log in' in html.lower()}/{'password' in html.lower()}")
+        for needle in ('edge_media_to_caption', '"caption"', 'og:description', 'xdt_shortcode_media'):
+            i = html.find(needle)
+            if i >= 0:
+                snip = html[i:i + 220].replace("\n", " ")
+                print(f"    '{needle}' @ {i}:  {snip}")
+            else:
+                print(f"    '{needle}': NOT FOUND")
+    except urllib.error.HTTPError as e:
+        print(f"    HTTP {e.code}")
+    except Exception as e:
+        print("    error:", e)
+
+
 # ------------------------------------------------------- recipe parser (port of Swift)
 ING_HEADERS = {"ingredients", "ingredient", "what you need", "you'll need", "you will need", "shopping list"}
 STEP_HEADERS = {"instructions", "instruction", "directions", "direction", "method", "steps",
@@ -352,6 +441,8 @@ def main():
     ap.add_argument("url", nargs="?", help="Instagram reel/post URL")
     ap.add_argument("--cookies", help="Netscape cookies.txt for authenticated fetch")
     ap.add_argument("--caption-file", help="Skip fetching; parse a caption from this file")
+    ap.add_argument("--raw", action="store_true",
+                    help="Dump raw response snippets (to diagnose why routes fail)")
     args = ap.parse_args()
 
     if args.caption_file:
@@ -370,10 +461,11 @@ def main():
 
     print("\n=== ROUTES ===")
     caption = None
-    for name, fn in [("embed/captioned", fetch_embed), ("graphql", fetch_graphql)]:
+    for name, fn in [("embed/captioned", fetch_embed), ("graphql", fetch_graphql),
+                     ("reel page", fetch_reel_page)]:
         cap, status = fn(code, cookies)
         got = f"{len(cap)} chars" if cap else "—"
-        print(f"  {name:18} {status:40} {got}")
+        print(f"  {name:18} {status:45} {got}")
         if cap and not caption:
             caption = cap
 
@@ -382,7 +474,10 @@ def main():
     else:
         print("\nNo caption retrieved by any route.")
         print("If you're logged out, pass --cookies cookies.txt. If you ARE logged in and it")
-        print("still fails, the doc_id may have rotated — tell Claude and we'll refresh it.")
+        print("still fails, re-run with --raw and send Claude the output.")
+
+    if args.raw:
+        dump_raw(code, cookies)
 
 
 if __name__ == "__main__":
