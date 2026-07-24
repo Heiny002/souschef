@@ -170,6 +170,28 @@ final class PastedTextExtractorTests: XCTestCase {
         XCTAssertTrue(r.isViable)
     }
 
+    func testHTMLEncodedCaptionIsDecoded() {
+        // Instagram captions arrive HTML-encoded: hex-entity bullets and en-dashes must be
+        // decoded so bullet markers strip and text renders (real Instagram import bug).
+        let text = """
+        Bruschetta Chicken
+
+        Ingredients:
+        &#x2022; Chicken breast
+        &#x2022; Salt &amp; pepper
+
+        Cook the shallot for 3&#x2013;5 minutes until softened.
+        Broil for 7&#x2013;10 minutes.
+        """
+        let r = PastedTextExtractor().extract(text: text)
+        XCTAssertEqual(r.ingredients.count, 2)
+        XCTAssertEqual(r.ingredients.first?.text, "Chicken breast", "hex bullet decoded then stripped")
+        XCTAssertEqual(r.ingredients.last?.text, "Salt & pepper", "&amp; decoded")
+        XCTAssertEqual(r.steps.first?.text.contains("3–5 minutes"), true, "en-dash decoded")
+        XCTAssertEqual(r.steps.first?.text.contains("&#x"), false)
+        XCTAssertTrue(r.isViable)
+    }
+
     func testInlineNumberedStepsOnOneLine() {
         let text = """
         Toast

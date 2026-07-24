@@ -73,6 +73,10 @@ actor ExtractionPipeline {
             }
         }
 
+        // Captions from Instagram/TikTok arrive HTML-encoded — decode so bullets, dashes,
+        // and ampersands don't show as &#x2022; / &#x2013; / &amp; downstream.
+        captionText = captionText.decodedHTMLEntities
+
         // Step 2: Try transcript endpoint (may be unavailable / server down)
         var videoTranscript: VideoTranscript?
         if let vt = try? await TranscriptFetcher.shared.fetchTranscript(videoURL: urlString) {
