@@ -279,6 +279,25 @@ struct ImportView: View {
 
     // MARK: - Extraction Failure UI
 
+    /// Testing aid: shows which fetch route returned what, so we can diagnose a failed
+    /// import from the device. Remove once extraction is dialed in.
+    private func debugReadout(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("DEBUG")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color.scAccent)
+            Text(text)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Color.scTextSecondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(Spacing.sm)
+        .background(Color.scSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.top, Spacing.sm)
+    }
+
     private var extractionFailedSection: some View {
         VStack(spacing: Spacing.md) {
             Image(systemName: "exclamationmark.magnifyingglass")
@@ -310,6 +329,10 @@ struct ImportView: View {
                         .multilineTextAlignment(.center)
                         .lineLimit(3)
                         .padding(.top, Spacing.xs)
+                }
+
+                if let result = extractionResult, let debug = result.debugInfo {
+                    debugReadout(debug)
                 }
             }
 
