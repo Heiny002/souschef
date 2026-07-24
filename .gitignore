@@ -36,6 +36,11 @@ Secrets.xcconfig
 # tracked project file so pulls don't conflict on project.pbxproj.
 Signing.xcconfig
 
+# Instagram session cookies for the desktop debug tool (tools/ig_extract.py).
+# Contains a live login session — treat like a password, never commit.
+cookies.txt
+*.cookies.txt
+
 # Swift Package Manager
 .build/
 .swiftpm/
