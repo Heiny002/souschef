@@ -229,6 +229,7 @@ enum IngredientConverter {
         // Grains, oats & crumbs
         ("rolled oats",               89),  ("old-fashioned oats",        89),
         ("quick oats",                89),  ("steel cut oats",           140),
+        ("oats",                      89),  ("oatmeal",                   89),
         ("oat bran",                 106),  ("quinoa",                   177),
         ("brown rice",               170),  ("rice",                     198),
         ("pearled barley",           213),  ("barley",                   213),
@@ -328,34 +329,62 @@ enum IngredientConverter {
 
     static func gPerCup(for item: String) -> Double? {
         let lower = item.lowercased()
-        // Primary: the most specific (longest) table key that appears in the ingredient name,
-        // so "almond flour" resolves to 96, not the generic "flour" at 120. Generic catch-all
-        // keys ("flour", "sugar", "milk") make bare ingredient names resolve here too.
-        if let best = densityTable
-            .filter({ lower.contains($0.key) })
-            .max(by: { $0.key.count < $1.key.count }) {
-            return best.gPerCup
-        }
-        // Fallback: the name is a fragment of a key (e.g. "oats" when only a longer key exists).
-        // Take the SHORTEST such key so a bare word lands on the most generic entry rather than
-        // an arbitrary long one. Guarded to ≥3 chars so tiny fragments don't over-match.
-        guard lower.count >= 3 else { return nil }
+        // The most specific (longest) table key that appears in the ingredient name, so
+        // "almond flour" resolves to 96, not the generic "flour" at 120, and "coconut milk"
+        // to 241, not "milk" at 227. Generic catch-all keys ("flour", "sugar", "milk", "oats")
+        // let bare ingredient names resolve too. No bidirectional/fragment fallback: a name we
+        // can't place returns nil so the caller shows it unchanged, rather than a fragment like
+        // "ice" matching "rice" (audit) and producing a confidently wrong weight.
         return densityTable
-            .filter { $0.key.contains(lower) }
-            .min(by: { $0.key.count < $1.key.count })
+            .filter { lower.contains($0.key) }
+            .max(by: { $0.key.count < $1.key.count })
             .map { $0.gPerCup }
     }
 
     // MARK: - Piece lookup
 
-    private static func pieceInfo(for item: String) -> (gPerPiece: Double, label: String)? {
-        let lower = item.lowercased()
+    static func pieceInfo(for item: String) -> (gPerPiece: Double, label: String)? {
+        // Longest whole-word keyword wins, so "cherry tomato" (17 g) beats "tomato" (150 g) and
+        // "sweet potato" (130 g) beats "potato" (150 g) regardless of table order — and whole-word
+        // matching stops "eggplant" from matching "egg" (50 g), the exact audit failures.
+        var best: (length: Int, gPerPiece: Double, label: String)?
         for entry in pieceTable {
-            if entry.keywords.contains(where: { lower.contains($0) || $0.contains(lower) }) {
-                return (entry.gPerPiece, entry.label)
+            for keyword in entry.keywords where Self.matchesWholeWord(keyword, in: item) {
+                if best == nil || keyword.count > best!.length {
+                    best = (keyword.count, entry.gPerPiece, entry.label)
+                }
             }
         }
-        return nil
+        return best.map { (gPerPiece: $0.gPerPiece, label: $0.label) }
+    }
+
+    /// True when `phrase` (one or more words) appears in `text` as consecutive whole words,
+    /// tolerating simple plurals of the (singular) keyword — "tomato" matches "cherry tomatoes",
+    /// but "egg" does NOT match "eggplant".
+    static func matchesWholeWord(_ phrase: String, in text: String) -> Bool {
+        let words = tokenize(text)
+        let needle = tokenize(phrase)
+        guard !needle.isEmpty, needle.count <= words.count else { return false }
+        for start in 0...(words.count - needle.count)
+        where zip(words[start ..< start + needle.count], needle).allSatisfy({ wordEquals($0.0, $0.1) }) {
+            return true
+        }
+        return false
+    }
+
+    private static func tokenize(_ s: String) -> [String] {
+        s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+    }
+
+    /// Item word equals the keyword, or a simple plural of it (egg→eggs, tomato→tomatoes,
+    /// cherry→cherries). Keywords are authored singular, so we expand the keyword, never stem
+    /// the item — which avoids mangling words like "molasses".
+    private static func wordEquals(_ itemWord: String, _ keyWord: String) -> Bool {
+        if itemWord == keyWord || itemWord == keyWord + "s" || itemWord == keyWord + "es" {
+            return true
+        }
+        if keyWord.hasSuffix("y"), itemWord == String(keyWord.dropLast()) + "ies" { return true }
+        return false
     }
 
     // MARK: - Intermediate conversions

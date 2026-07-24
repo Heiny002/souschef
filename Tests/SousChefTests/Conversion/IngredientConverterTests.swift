@@ -53,6 +53,39 @@ final class IngredientConverterTests: XCTestCase {
         XCTAssertNil(IngredientConverter.gPerCup(for: "xyz"))
     }
 
+    func testBareFragmentDoesNotMatchWrongDensity() {
+        // Audit: the old bidirectional contains matched "ice" → rice flour. A name we can't
+        // place must return nil (shown unchanged), not a confidently wrong weight.
+        XCTAssertNil(IngredientConverter.gPerCup(for: "ice"))
+        XCTAssertEqual(IngredientConverter.gPerCup(for: "oats"), 89)  // now an explicit key
+        XCTAssertEqual(IngredientConverter.gPerCup(for: "rolled oats"), 89)
+    }
+
+    // MARK: Piece-weight matching (whole-word, longest keyword wins)
+
+    func testPieceKeywordSpecificityAndWholeWord() {
+        // The audit failures: "cherry tomato" resolved to tomato (150 g) and "eggplant" to
+        // egg (50 g). Longest whole-word keyword wins, and "egg" must not match "eggplant".
+        XCTAssertEqual(IngredientConverter.pieceInfo(for: "cherry tomato")?.gPerPiece, 17)
+        XCTAssertEqual(IngredientConverter.pieceInfo(for: "sweet potato")?.gPerPiece, 130)
+        XCTAssertEqual(IngredientConverter.pieceInfo(for: "chicken breast")?.gPerPiece, 200)
+        XCTAssertNil(IngredientConverter.pieceInfo(for: "eggplant"))
+    }
+
+    func testPiecePluralsResolve() {
+        XCTAssertEqual(IngredientConverter.pieceInfo(for: "cherry tomatoes")?.gPerPiece, 17)
+        XCTAssertEqual(IngredientConverter.pieceInfo(for: "eggs")?.gPerPiece, 50)
+        XCTAssertEqual(IngredientConverter.pieceInfo(for: "egg whites")?.gPerPiece, 33)
+        XCTAssertEqual(IngredientConverter.pieceInfo(for: "cloves of garlic")?.gPerPiece, 5)
+    }
+
+    func testWholeWordMatcher() {
+        XCTAssertTrue(IngredientConverter.matchesWholeWord("tomato", in: "cherry tomatoes"))
+        XCTAssertTrue(IngredientConverter.matchesWholeWord("egg", in: "2 large eggs"))
+        XCTAssertFalse(IngredientConverter.matchesWholeWord("egg", in: "eggplant"))
+        XCTAssertFalse(IngredientConverter.matchesWholeWord("rice", in: "nice bread"))
+    }
+
     // MARK: Quantity parsing (used by every mode)
 
     func testParseQuantityHandlesMixedFractionsAndRanges() {
