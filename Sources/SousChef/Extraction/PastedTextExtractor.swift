@@ -25,8 +25,12 @@ struct PastedTextExtractor {
 
     // MARK: - Entry point
 
-    func extract(text: String) -> ExtractionResult {
+    func extract(text rawText: String) -> ExtractionResult {
         var result = ExtractionResult(extractionMethod: Self.method)
+
+        // Instagram captions arrive HTML-encoded, so bullets and dashes come through as
+        // entities (&#x2022;, &#x2013;). Decode first so markers strip and text renders.
+        let text = rawText.decodedHTMLEntities
 
         let lines = text.components(separatedBy: .newlines).map {
             $0.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\r")))
@@ -371,5 +375,32 @@ struct PastedTextExtractor {
         let range = NSRange(s.startIndex..., in: s)
         guard let m = re.firstMatch(in: s, range: range), let r = Range(m.range, in: s) else { return s }
         return s.replacingCharacters(in: r, with: repl)
+    }
+}
+
+// MARK: - HTML entity decoding
+
+extension String {
+    /// Decode HTML entities — the common named ones plus decimal (`&#8226;`) and hex
+    /// (`&#x2022;`) numeric references. Instagram captions arrive HTML-encoded, so bullets
+    /// (`&#x2022;`), en-dashes (`&#x2013;`), and ampersands (`&amp;`) would otherwise show
+    /// verbatim in ingredients and steps. Idempotent, so decoding already-plain text is safe.
+    var decodedHTMLEntities: String {
+        var s = self
+        for (entity, char) in [("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""),
+                               ("&#39;", "'"), ("&apos;", "'"), ("&nbsp;", " ")] {
+            s = s.replacingOccurrences(of: entity, with: char)
+        }
+        guard let re = try? NSRegularExpression(pattern: "&#([xX])?([0-9a-fA-F]+);") else { return s }
+        let range = NSRange(s.startIndex..., in: s)
+        for match in re.matches(in: s, range: range).reversed() {
+            guard let codeRange = Range(match.range(at: 2), in: s),
+                  let fullRange = Range(match.range, in: s) else { continue }
+            let isHex = match.range(at: 1).location != NSNotFound
+            guard let code = UInt32(s[codeRange], radix: isHex ? 16 : 10),
+                  let scalar = Unicode.Scalar(code) else { continue }
+            s.replaceSubrange(fullRange, with: String(scalar))
+        }
+        return s
     }
 }
