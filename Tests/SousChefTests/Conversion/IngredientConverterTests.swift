@@ -110,4 +110,48 @@ final class IngredientConverterTests: XCTestCase {
         ing.unit = "cup"
         XCTAssertEqual(IngredientConverter.display(ing, mode: .original), "1 cup sugar")
     }
+
+    // MARK: Servings scaling (the quick-slice feature)
+
+    func testScaleOriginalUnitsDoubles() {
+        let ing = Ingredient(item: "flour", rawText: "2 cups flour")
+        ing.quantity = "2"
+        ing.unit = "cup"
+        XCTAssertEqual(IngredientConverter.display(ing, mode: .original, scale: 2), "4 cups flour")
+    }
+
+    func testScaleOriginalUnitsHalfProducesFraction() {
+        let ing = Ingredient(item: "sugar", rawText: "1 cup sugar")
+        ing.quantity = "1"
+        ing.unit = "cup"
+        XCTAssertEqual(IngredientConverter.display(ing, mode: .original, scale: 0.5), "½ cup sugar")
+    }
+
+    func testScaleKeepsToTasteUnchanged() {
+        let ing = Ingredient(item: "salt", rawText: "salt to taste")  // no quantity/unit
+        XCTAssertEqual(IngredientConverter.display(ing, mode: .original, scale: 3), "salt to taste")
+    }
+
+    func testScaleOneReturnsOriginalTextVerbatim() {
+        let ing = Ingredient(item: "flour", rawText: "2 cups sifted flour")
+        ing.quantity = "2"
+        ing.unit = "cup"
+        XCTAssertEqual(IngredientConverter.display(ing, mode: .original, scale: 1), "2 cups sifted flour")
+    }
+
+    func testScaleComposesWithMetricConversion() {
+        let ing = Ingredient(item: "all-purpose flour", rawText: "1 cup all-purpose flour")
+        ing.quantity = "1"
+        ing.unit = "cup"
+        // 1 cup flour = 120 g → ×2 = 240 g
+        XCTAssertEqual(IngredientConverter.display(ing, mode: .metric, scale: 2), "240g all-purpose flour")
+    }
+
+    func testScalePreservesSizeWordAndPrep() {
+        let ing = Ingredient(item: "onion", rawText: "1 large onion, diced")
+        ing.quantity = "1"
+        ing.unit = "large"       // a size word, not a measurement unit
+        ing.preparation = "diced"
+        XCTAssertEqual(IngredientConverter.display(ing, mode: .original, scale: 2), "2 large onion, diced")
+    }
 }

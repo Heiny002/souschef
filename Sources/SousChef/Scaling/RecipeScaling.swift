@@ -274,3 +274,23 @@ enum RecipeScaler {
         QuantityFormatter.string(quantity.scaled(by: factor, scalable: scalable))
     }
 }
+
+// MARK: - Recipe yield
+
+/// Extracts a numeric base count and its noun from a recipe's free-text yield, so the servings
+/// scaler has something to compute a factor against. Recipes state yield every which way —
+/// "4 servings", "Serves 8", "36 cookies", "4-6 servings" — so this is best-effort: the first
+/// integer is the count, and the noun is the last non-filler word (defaulting to "servings").
+enum RecipeYield {
+    static func parse(_ text: String?) -> (count: Int, noun: String)? {
+        guard let text,
+              let range = text.range(of: #"\d+"#, options: .regularExpression),
+              let count = Int(text[range]), count > 0 else { return nil }
+        let filler: Set<String> = [
+            "serves", "serving", "servings", "makes", "yields", "yield", "about", "approximately",
+        ]
+        let words = text.lowercased().split { !$0.isLetter }.map(String.init)
+        let noun = words.last(where: { !filler.contains($0) }) ?? "servings"
+        return (count, noun)
+    }
+}

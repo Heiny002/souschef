@@ -110,4 +110,22 @@ final class RecipeScalingTests: XCTestCase {
         let range = Quantity.parse(quantity: "2-3", unit: "clove")!
         XCTAssertEqual(QuantityFormatter.spoken(range), "2 to 3 cloves")
     }
+
+    // MARK: Recipe yield parsing (base for the servings scaler)
+
+    func testRecipeYieldExtractsCountAndNoun() {
+        XCTAssertEqual(RecipeYield.parse("4 servings")?.count, 4)
+        XCTAssertEqual(RecipeYield.parse("4 servings")?.noun, "servings")
+        XCTAssertEqual(RecipeYield.parse("Serves 8")?.count, 8)
+        XCTAssertEqual(RecipeYield.parse("Serves 8")?.noun, "servings")   // "serves" is filler
+        XCTAssertEqual(RecipeYield.parse("36 cookies")?.count, 36)
+        XCTAssertEqual(RecipeYield.parse("36 cookies")?.noun, "cookies")
+        XCTAssertEqual(RecipeYield.parse("4-6 servings")?.count, 4)       // lower bound
+    }
+
+    func testRecipeYieldReturnsNilWithoutANumber() {
+        XCTAssertNil(RecipeYield.parse("a dozen"))
+        XCTAssertNil(RecipeYield.parse(""))
+        XCTAssertNil(RecipeYield.parse(nil))
+    }
 }

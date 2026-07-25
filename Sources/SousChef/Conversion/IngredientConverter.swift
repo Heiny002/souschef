@@ -30,8 +30,11 @@ enum IngredientConverter {
 
     // MARK: - Public entry point
 
-    static func display(_ ingredient: Ingredient, mode: UnitMode) -> String {
-        guard mode != .original else { return ingredient.rawText }
+    static func display(_ ingredient: Ingredient, mode: UnitMode, scale: Double = 1) -> String {
+        // Original units: keep the text exactly as authored at 1×; scale in place otherwise.
+        guard mode != .original else {
+            return scale == 1 ? ingredient.rawText : scaledOriginal(ingredient, factor: scale)
+        }
 
         let qtyStr = ingredient.quantity ?? ""
         let rawUnit = (ingredient.unit ?? "").lowercased()
@@ -39,12 +42,14 @@ enum IngredientConverter {
         let prepSuffix = ingredient.preparation.map { ", \($0)" } ?? ""
 
         guard !qtyStr.isEmpty,
-              let qty = parseQuantity(qtyStr),
-              qty > 0,
+              let baseQty = parseQuantity(qtyStr),
+              baseQty > 0,
               let srcUnit = canonicalUnit(rawUnit) else {
-            return ingredient.rawText
+            // Nothing convertible — fall back to text, still scaled if a factor was applied.
+            return scale == 1 ? ingredient.rawText : scaledOriginal(ingredient, factor: scale)
         }
 
+        let qty = baseQty * scale   // scale first, then convert units
         let result: String?
         switch mode {
         case .original: result = nil
@@ -54,8 +59,27 @@ enum IngredientConverter {
         case .pieces:   result = toPieces(qty: qty, unit: srcUnit, item: item)
         }
 
-        guard let converted = result else { return ingredient.rawText }
+        guard let converted = result else {
+            return scale == 1 ? ingredient.rawText : scaledOriginal(ingredient, factor: scale)
+        }
         return "\(converted) \(item)\(prepSuffix)"
+    }
+
+    /// Scale an ingredient in its original units, rendered with the scaling engine's culinary
+    /// fractions (½ cup, 1½ cups, ≈4 eggs). Amounts with no parseable quantity ("salt to taste")
+    /// are returned unchanged. This is the recipe scaler's first consumer of the scaling engine.
+    static func scaledOriginal(_ ingredient: Ingredient, factor: Double) -> String {
+        guard let quantity = Quantity.parse(quantity: ingredient.quantity, unit: ingredient.unit) else {
+            return ingredient.rawText
+        }
+        let scaled = quantity.scaled(by: factor)
+        let numberAndUnit = QuantityFormatter.string(scaled)
+        // Preserve a size word the measurement engine doesn't model as a unit (e.g. "large").
+        let extraUnit = scaled.unit == nil
+            ? (ingredient.unit.map { $0.isEmpty ? "" : " \($0)" } ?? "")
+            : ""
+        let prepSuffix = ingredient.preparation.map { ", \($0)" } ?? ""
+        return "\(numberAndUnit)\(extraUnit) \(ingredient.item)\(prepSuffix)"
     }
 
     // MARK: - Quantity string → Double
