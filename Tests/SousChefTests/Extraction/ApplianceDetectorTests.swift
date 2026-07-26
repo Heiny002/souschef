@@ -10,6 +10,9 @@ final class ApplianceDetectorTests: XCTestCase {
     func testDetectsModernAppliances() {
         XCTAssertTrue(ApplianceDetector.detect(in: ["Cook in the air fryer at 400F for 12 min"])
             .contains("air fryer"))
+        // Recipes usually say the verb, not the appliance — this must match too.
+        XCTAssertTrue(ApplianceDetector.detect(in: ["Air fry the wings for 18 minutes"])
+            .contains("air fryer"))
         XCTAssertTrue(ApplianceDetector.detect(in: ["Sous vide the steak at 130F"])
             .contains("sous vide"))
         XCTAssertTrue(ApplianceDetector.detect(in: ["Pressure cook for 8 minutes"])

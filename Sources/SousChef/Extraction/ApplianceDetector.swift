@@ -73,7 +73,9 @@ enum ApplianceDetector {
         Entry(name: "oven", keywords: ["oven", "baking dish", "roasting pan", "bake at", "roasting rack"]),
         Entry(name: "broiler", keywords: ["broil", "broiler"]),
         Entry(name: "toaster oven", keywords: ["toaster oven"]),
-        Entry(name: "air fryer", keywords: ["air fryer", "air-fryer", "airfryer"]),
+        // "air fry the wings" is far more common in recipe text than naming the appliance,
+        // and "air fry" covers "air fryer"/"air-fryer" as a substring too.
+        Entry(name: "air fryer", keywords: ["air fry", "air-fry", "airfry"]),
 
         // Countertop appliances
         Entry(name: "blender", keywords: ["blender", "blend until smooth", "vitamix", "blendtec"]),
