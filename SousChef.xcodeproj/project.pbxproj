@@ -81,6 +81,7 @@
 		AF8990BE852D1D55206D198B /* BioLinkResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7FA7EC42E315D9108E0DAA /* BioLinkResolver.swift */; };
 		B85588E48D01A0F24BF38630 /* Lora-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DB59ADB64230BE82B206FCA7 /* Lora-Bold.ttf */; };
 		FEED0000000000000000DA01 /* Data in Resources */ = {isa = PBXBuildFile; fileRef = FA0C7EF9BD953876152C2053 /* Data */; };
+		FEED0000000000000000AC01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000AC02 /* Assets.xcassets */; };
 		DA00F67E30D9541957FE96C0 /* SimilarRecipePreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48E434BEE39A52AF6BEC478 /* SimilarRecipePreviewSheet.swift */; };
 		DAD44762FA7BCEC58675730D /* DinerProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CCCA666B0B957AABF2ED7AB /* DinerProfilesView.swift */; };
 		DB8955E2B5E4A8E5D32BEFBD /* CloudKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07D492E365A4AB46C47203BF /* CloudKit.framework */; };
@@ -136,6 +137,7 @@
 		D6E7F8091A2B3C4D5E6F7081 /* IngredientAnnotator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngredientAnnotator.swift; sourceTree = "<group>"; };
 		778C9ACBA83889E0050DC223 /* SchemaOrgExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaOrgExtractor.swift; sourceTree = "<group>"; };
 		FA0C7EF9BD953876152C2053 /* Data */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Data; sourceTree = "<group>"; };
+		FEED0000000000000000AC02 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7C621B64319F944043650F8B /* SubstitutionLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubstitutionLibrary.swift; sourceTree = "<group>"; };
 		7C9FE66F7A96F67B86A4634E /* ImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportView.swift; sourceTree = "<group>"; };
 		7F7FA7EC42E315D9108E0DAA /* BioLinkResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BioLinkResolver.swift; sourceTree = "<group>"; };
@@ -305,6 +307,7 @@
 		3B10124DA2D1A5AA8E40D64A /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				FEED0000000000000000AC02 /* Assets.xcassets */,
 				FA0C7EF9BD953876152C2053 /* Data */,
 				9699EB8252B98BA0D26F2705 /* Fonts */,
 			);
@@ -569,6 +572,7 @@
 				3D73245B8EE956A066827D6A /* Lora-Regular.ttf in Resources */,
 				98ABB4195E38B3EC80555C28 /* Lora-SemiBold.ttf in Resources */,
 				FEED0000000000000000DA01 /* Data in Resources */,
+				FEED0000000000000000AC01 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

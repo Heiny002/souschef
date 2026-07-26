@@ -22,6 +22,10 @@ targets:
     sources:
       - path: Sources/SousChef
     resources:
+      # App icon lives in the asset catalog; ASSETCATALOG_COMPILER_APPICON_NAME
+      # (below) points at the AppIcon set inside it.
+      - path: Sources/SousChef/Resources/Assets.xcassets
+        optional: true
       # Fonts are copied flat to the bundle root; Info.plist's UIAppFonts
       # references them by bare filename.
       - path: Sources/SousChef/Resources/Fonts
