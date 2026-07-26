@@ -20,6 +20,12 @@ actor ExtractionPipeline {
         self.fetcher = fetcher
     }
 
+    /// The Anthropic key injected via Secrets.xcconfig → Info.plist, or nil when absent/empty.
+    /// Gates every optional LLM step (caption structuring, web-page fallback, transcript validation).
+    static var anthropicAPIKey: String? {
+        (Bundle.main.infoDictionary?["ANTHROPIC_API_KEY"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
     /// Extract a recipe from a URL. Returns the best result found across all layers.
     /// The optional `progress` callback receives status text for UI updates during multi-step extraction.
     func extract(from urlString: String, progress: (@Sendable (String) -> Void)? = nil) async throws -> ExtractionResult {
@@ -155,6 +161,10 @@ actor ExtractionPipeline {
             return empty
         }
 
+        // The Anthropic key (if the developer added Secrets.xcconfig) powers two optional
+        // steps below: LLM caption structuring and the transcript validator.
+        let apiKey = Self.anthropicAPIKey
+
         // A written caption (Instagram/TikTok) is structured recipe text, so parse it with the
         // same parser as paste/scan — it handles "Ingredients:/Instructions:" layouts far better
         // than the spoken-word transcript extractor. Keep whichever candidate is richer.
@@ -166,6 +176,26 @@ actor ExtractionPipeline {
                 result = pasted
             }
         }
+
+        // Step 3.5: LLM caption structuring (Option A). Rule-based parsing hits a ceiling on
+        // messy social captions — run-on ingredient groups under sub-labels, inline-numbered
+        // steps, marketing narrative and hashtags — and can produce a viable-but-wrong split.
+        // When a key is present, let Claude structure the RAW caption (how ReciMe / OrganizEat-
+        // class apps do it). Take it only when it's at least as complete as the deterministic
+        // parse, so an off-day LLM response can't regress a caption the parser already nailed.
+        // No key / failure → deterministic result stands (offline-safe fallback).
+        if let apiKey, !captionText.isEmpty, captionText.count >= 40 {
+            progress?("Structuring the recipe…")
+            let structurer = LLMCaptionStructurer(apiKey: apiKey)
+            if let llm = try? await structurer.structure(caption: captionText, titleHint: titleHint),
+               llm.isViable, Self.completeness(llm) >= Self.completeness(result) {
+                result = llm
+                debugTrace.append("LLM structurer: \(llm.ingredients.count) ingredients, \(llm.steps.count) steps")
+            } else {
+                debugTrace.append("LLM structurer: kept deterministic parse")
+            }
+        }
+
         // Attach provenance + photo so a caption-parsed import still shows its Instagram badge,
         // source link and thumbnail (regardless of which extractor won).
         result.originalSourceURL = urlString
@@ -174,11 +204,10 @@ actor ExtractionPipeline {
 
         guard result.confidence < ConfidenceThreshold.accept else { return result }
 
-        // Step 4: Layer 6 — LLM validation / fallback
-        guard let apiKey = Bundle.main.infoDictionary?["ANTHROPIC_API_KEY"] as? String,
-              !apiKey.isEmpty else {
-            return result
-        }
+        // Step 4: Layer 6 — LLM validation / fallback (transcript-oriented). The caption
+        // structurer above already ran when a key was present; this backstops transcript-only
+        // imports and captions the structurer couldn't lift over the accept threshold.
+        guard let apiKey else { return result }
         let validator = TranscriptLLMValidator(apiKey: apiKey)
         result = (try? await validator.validate(transcript: fullText, partial: result)) ?? result
 
@@ -365,6 +394,19 @@ actor ExtractionPipeline {
     private func extractFromWebPage(urlString: String) async throws -> ExtractionResult {
         let html = try await fetcher.fetch(urlString: urlString)
         var result = extractFromHTML(html: html)
+
+        // Layer 4: LLM fallback (H13). When the deterministic layers (1–3) stay below the reject
+        // threshold and a key is configured, ask Claude to extract from the stripped page text —
+        // this rescues blogs / custom sites with no usable structured data. Keep it only if it's
+        // more confident, and carry over any fields the deterministic layers did find (photo,
+        // description, times). No key / failure → the deterministic result stands.
+        if result.confidence < ConfidenceThreshold.reject, let apiKey = Self.anthropicAPIKey {
+            if let llm = try? await LLMExtractor(apiKey: apiKey).extract(html: html),
+               llm.confidence > result.confidence {
+                result = merge(base: result, onto: llm)
+            }
+        }
+
         result.recipePageURL = urlString
         return result
     }
@@ -391,7 +433,8 @@ actor ExtractionPipeline {
             return layer3
         }
 
-        // Layer 4: LLM fallback — stub (SC-030)
+        // Layer 4 (LLM fallback) runs in the async web path — see extractFromWebPage — because
+        // the Claude call is async and this synchronous entry point is also used directly by tests.
 
         // Return best available result (highest confidence)
         return [layer1, layer2, layer3].max(by: { $0.confidence < $1.confidence }) ?? layer3

@@ -379,6 +379,7 @@ struct RecipeDetailView: View {
     @State private var showCompatibility = false
     @State private var unitMode: UnitMode = .original
     @State private var showDeleteConfirm = false
+    @State private var targetServings = 0   // 0 = follow the recipe's own yield
 
     var body: some View {
         ZStack {
@@ -434,12 +435,14 @@ struct RecipeDetailView: View {
                     // Ingredients
                     if !recipe.ingredients.isEmpty {
                         ingredientsSectionHeader
+                        if hasScalableAmounts { servingsScaler }
                         ForEach(recipe.ingredients.sorted(by: { $0.order < $1.order })) { ingredient in
-                            Text(IngredientConverter.display(ingredient, mode: unitMode))
+                            Text(IngredientConverter.display(ingredient, mode: unitMode, scale: scaleFactor))
                                 .font(.scBody)
                                 .foregroundStyle(Color.scTextPrimary)
                                 .padding(.vertical, Spacing.xs)
                                 .animation(.easeInOut(duration: 0.2), value: unitMode)
+                                .animation(.easeInOut(duration: 0.2), value: effectiveServings)
                         }
                     }
 
@@ -535,6 +538,60 @@ struct RecipeDetailView: View {
         .sheet(isPresented: $showCompatibility) {
             CompatibilityView(recipe: recipe, diners: allDiners)
         }
+    }
+
+    // MARK: - Servings scaling
+
+    /// The recipe's own yield count (e.g. "4 servings" → 4), defaulting to 4 when the yield is
+    /// missing or non-numeric so the scaler always has a base to work from.
+    private var baseYield: Int { RecipeYield.parse(recipe.recipeYield)?.count ?? 4 }
+
+    /// The noun to label the stepper with — "servings", or "cookies" for "36 cookies".
+    private var yieldNoun: String { RecipeYield.parse(recipe.recipeYield)?.noun ?? "servings" }
+
+    /// The count the user is scaling to. `targetServings == 0` means "unchanged" → follow base.
+    private var effectiveServings: Int { targetServings == 0 ? baseYield : targetServings }
+
+    /// Multiplier applied to every ingredient amount.
+    private var scaleFactor: Double { Double(effectiveServings) / Double(max(baseYield, 1)) }
+
+    private var maxServings: Int { max(baseYield * 8, 24) }
+
+    /// Only show the scaler when at least one ingredient has an amount to scale.
+    private var hasScalableAmounts: Bool {
+        recipe.ingredients.contains { !($0.quantity ?? "").isEmpty }
+    }
+
+    private var servingsBinding: Binding<Int> {
+        Binding(get: { effectiveServings }, set: { targetServings = max(1, $0) })
+    }
+
+    private var scaleLabel: String {
+        let f = scaleFactor
+        return f == f.rounded() ? "\(Int(f))×" : String(format: "%.2g×", f)
+    }
+
+    /// A "– N servings +" stepper that scales the ingredient amounts live.
+    private var servingsScaler: some View {
+        Stepper(value: servingsBinding, in: 1...maxServings) {
+            HStack(spacing: Spacing.xs) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.scTextSecondary)
+                Text("\(effectiveServings) \(yieldNoun)")
+                    .font(.scBody)
+                    .foregroundStyle(Color.scTextPrimary)
+                if scaleFactor != 1 {
+                    Text(scaleLabel)
+                        .font(.scCaption)
+                        .foregroundStyle(Color.scAccent)
+                }
+            }
+        }
+        .tint(Color.scAccent)
+        .padding(.vertical, Spacing.xs)
+        .accessibilityLabel("Servings")
+        .accessibilityValue("\(effectiveServings) \(yieldNoun)")
     }
 
     /// Ingredients header with inline unit-mode picker.

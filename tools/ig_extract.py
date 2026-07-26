@@ -11,6 +11,11 @@ USAGE
     python3 tools/ig_extract.py "https://www.instagram.com/reel/XXXXXXX/"
     python3 tools/ig_extract.py "<url>" --cookies cookies.txt   # authenticated (full caption)
     python3 tools/ig_extract.py --caption-file some.txt         # parse a caption you paste in
+    python3 tools/ig_extract.py "<url>" --cookies cookies.txt --llm   # + Claude Haiku structuring
+
+For --llm, set ANTHROPIC_API_KEY in your shell (export ANTHROPIC_API_KEY=sk-ant-...). It
+runs the SAME prompt the app's LLMCaptionStructurer uses, so you can compare the
+deterministic parse against the LLM structuring on any caption before shipping.
 
 Getting cookies.txt (for the authenticated route): log into instagram.com in a browser,
 export cookies with a "Get cookies.txt" extension (Netscape format). This is the desktop
@@ -23,6 +28,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -513,12 +519,105 @@ def parse_recipe(text):
     return {"title": title or "(none)", "ingredients": ings, "steps": steps}
 
 
+# ------------------------------------------------- LLM structuring (mirrors Swift)
+# Keep this prompt in lockstep with LLMCaptionStructurer.buildPrompt in the app — the
+# whole point of the tool is to debug caption→recipe quality without an Xcode rebuild.
+def _llm_prompt(caption):
+    return (
+        "You are extracting a cooking recipe from a social-media video caption "
+        "(Instagram / TikTok / YouTube). Captions are messy: they mix the recipe with "
+        "marketing narrative, emojis, hashtags, @mentions, calls-to-action "
+        '("follow for more", "save this"), and nutrition / serving-size lines. Ingredients '
+        'are often grouped under sub-labels like "Steak:" or "For the sauce:", and steps are '
+        'often numbered inline ("1.Season the beef…").\n\n'
+        "Extract ONLY the actual recipe. Rules:\n"
+        "- Exclude hashtags, @mentions, emojis, marketing / call-to-action lines, and "
+        "nutrition-fact lines (calories, macros).\n"
+        "- Put each ingredient on its own entry, keeping its quantity and unit "
+        '("2 tbsp olive oil"). If ingredients are grouped under a sub-label, set "section" to '
+        'that label without the trailing colon (e.g. "Steak", "For the sauce"); otherwise '
+        '"section" is null.\n'
+        "- Steps: one action per entry, in order, with NO leading number or bullet.\n"
+        "- Do NOT invent quantities, ingredients, or steps that aren't in the caption.\n"
+        '- If the caption is not a recipe, return {"title": null, "ingredients": [], "steps": []}.\n\n'
+        "Return ONLY valid JSON (no prose, no code fences) matching this schema:\n"
+        "{\n"
+        '  "title": "string or null",\n'
+        '  "recipeYield": "string or null",\n'
+        '  "prepTimeMinutes": number or null,\n'
+        '  "cookTimeMinutes": number or null,\n'
+        '  "ingredients": [{"text": "string", "section": "string or null"}],\n'
+        '  "steps": ["string"]\n'
+        "}\n\n"
+        "Caption:\n" + caption[:6000]
+    )
+
+
+def _extract_json_object(text):
+    start = text.find("{")
+    end = text.rfind("}")
+    return text[start:end + 1] if 0 <= start < end else text
+
+
+def structure_with_llm(caption):
+    """Send the caption to Claude Haiku and return a parsed recipe dict, or (None, reason)."""
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not key:
+        return None, "ANTHROPIC_API_KEY not set in environment"
+    body = json.dumps({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 2048,
+        "messages": [{"role": "user", "content": _llm_prompt(caption)}],
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=body, method="POST",
+        headers={"content-type": "application/json", "x-api-key": key,
+                 "anthropic-version": "2023-06-01"})
+    try:
+        resp = urllib.request.urlopen(req, timeout=40)
+        payload = json.loads(_read(resp).decode("utf-8", "ignore"))
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}: {(e.read()[:300].decode('utf-8', 'ignore') if e.fp else '')}"
+    except Exception as e:
+        return None, f"request error: {e}"
+    try:
+        text = payload["content"][0]["text"]
+        return json.loads(_extract_json_object(text)), "ok"
+    except Exception as e:
+        return None, f"parse error: {e}"
+
+
+def show_llm_recipe(cap):
+    print("\n----- LLM-STRUCTURED RECIPE (Claude Haiku) -----")
+    data, status = structure_with_llm(cap or "")
+    if not data:
+        print("  (skipped:", status + ")")
+        return
+    ings = data.get("ingredients") or []
+    steps = data.get("steps") or []
+    print("Title:", data.get("title") or "(none)")
+    if data.get("recipeYield"):
+        print("Yield:", data["recipeYield"])
+    print(f"Ingredients ({len(ings)}):")
+    for ing in ings:
+        if isinstance(ing, dict):
+            sec, txt = ing.get("section"), ing.get("text", "")
+        else:
+            sec, txt = None, str(ing)
+        print("   -", (f"[{sec}] " if sec else "") + txt)
+    print(f"Steps ({len(steps)}):")
+    for s in steps:
+        print("   *", s)
+    viable = bool(data.get("title") and ings and steps)
+    print("VIABLE:", "YES ✅" if viable else "NO ❌")
+
+
 # --------------------------------------------------------------------------- main
-def show_recipe(cap):
+def show_recipe(cap, use_llm=False):
     print("\n----- RAW CAPTION -----")
     print(cap if cap else "(empty)")
     r = parse_recipe(cap or "")
-    print("\n----- PARSED RECIPE -----")
+    print("\n----- PARSED RECIPE (deterministic) -----")
     print("Title:", r["title"])
     print(f"Ingredients ({len(r['ingredients'])}):")
     for ing, sec in r["ingredients"]:
@@ -528,6 +627,8 @@ def show_recipe(cap):
         print("   *", s)
     viable = bool(r["title"] != "(none)" and r["ingredients"] and r["steps"])
     print("\nVIABLE RECIPE:", "YES ✅" if viable else "NO ❌ (needs title + ≥1 ingredient + ≥1 step)")
+    if use_llm:
+        show_llm_recipe(cap)
 
 
 def main():
@@ -537,10 +638,13 @@ def main():
     ap.add_argument("--caption-file", help="Skip fetching; parse a caption from this file")
     ap.add_argument("--raw", action="store_true",
                     help="Dump raw response snippets (to diagnose why routes fail)")
+    ap.add_argument("--llm", action="store_true",
+                    help="Also structure the caption with Claude Haiku (needs ANTHROPIC_API_KEY "
+                         "env var) — mirrors the app's LLMCaptionStructurer")
     args = ap.parse_args()
 
     if args.caption_file:
-        show_recipe(open(args.caption_file, encoding="utf-8").read())
+        show_recipe(open(args.caption_file, encoding="utf-8").read(), use_llm=args.llm)
         return
 
     if not args.url:

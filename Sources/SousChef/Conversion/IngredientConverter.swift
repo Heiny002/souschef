@@ -30,8 +30,11 @@ enum IngredientConverter {
 
     // MARK: - Public entry point
 
-    static func display(_ ingredient: Ingredient, mode: UnitMode) -> String {
-        guard mode != .original else { return ingredient.rawText }
+    static func display(_ ingredient: Ingredient, mode: UnitMode, scale: Double = 1) -> String {
+        // Original units: keep the text exactly as authored at 1×; scale in place otherwise.
+        guard mode != .original else {
+            return scale == 1 ? ingredient.rawText : scaledOriginal(ingredient, factor: scale)
+        }
 
         let qtyStr = ingredient.quantity ?? ""
         let rawUnit = (ingredient.unit ?? "").lowercased()
@@ -39,12 +42,14 @@ enum IngredientConverter {
         let prepSuffix = ingredient.preparation.map { ", \($0)" } ?? ""
 
         guard !qtyStr.isEmpty,
-              let qty = parseQuantity(qtyStr),
-              qty > 0,
+              let baseQty = parseQuantity(qtyStr),
+              baseQty > 0,
               let srcUnit = canonicalUnit(rawUnit) else {
-            return ingredient.rawText
+            // Nothing convertible — fall back to text, still scaled if a factor was applied.
+            return scale == 1 ? ingredient.rawText : scaledOriginal(ingredient, factor: scale)
         }
 
+        let qty = baseQty * scale   // scale first, then convert units
         let result: String?
         switch mode {
         case .original: result = nil
@@ -54,8 +59,27 @@ enum IngredientConverter {
         case .pieces:   result = toPieces(qty: qty, unit: srcUnit, item: item)
         }
 
-        guard let converted = result else { return ingredient.rawText }
+        guard let converted = result else {
+            return scale == 1 ? ingredient.rawText : scaledOriginal(ingredient, factor: scale)
+        }
         return "\(converted) \(item)\(prepSuffix)"
+    }
+
+    /// Scale an ingredient in its original units, rendered with the scaling engine's culinary
+    /// fractions (½ cup, 1½ cups, ≈4 eggs). Amounts with no parseable quantity ("salt to taste")
+    /// are returned unchanged. This is the recipe scaler's first consumer of the scaling engine.
+    static func scaledOriginal(_ ingredient: Ingredient, factor: Double) -> String {
+        guard let quantity = Quantity.parse(quantity: ingredient.quantity, unit: ingredient.unit) else {
+            return ingredient.rawText
+        }
+        let scaled = quantity.scaled(by: factor)
+        let numberAndUnit = QuantityFormatter.string(scaled)
+        // Preserve a size word the measurement engine doesn't model as a unit (e.g. "large").
+        let extraUnit = scaled.unit == nil
+            ? (ingredient.unit.map { $0.isEmpty ? "" : " \($0)" } ?? "")
+            : ""
+        let prepSuffix = ingredient.preparation.map { ", \($0)" } ?? ""
+        return "\(numberAndUnit)\(extraUnit) \(ingredient.item)\(prepSuffix)"
     }
 
     // MARK: - Quantity string → Double
@@ -150,52 +174,124 @@ enum IngredientConverter {
     }
 
     // MARK: - Density table  (g per cup — keyed by ingredient name fragment)
-
+    //
+    // Values are from King Arthur Baking's Ingredient Weight Chart, normalized to grams-per-cup
+    // (chart rows given per ½ cup / ¼ cup / tbsp / tsp are scaled up: ¼ cup ×4, 2 tbsp ×8, etc.).
+    // Generic catch-all keys ("flour", "sugar", "milk") sit alongside specific ones; the matcher
+    // prefers the longest key contained in the ingredient name, so "almond flour" beats "flour".
     private static let densityTable: [(key: String, gPerCup: Double)] = [
-        // Flours
-        ("almond flour",       96),  ("bread flour",       127),
-        ("cake flour",        114),  ("corn flour",        130),
-        ("oat flour",         104),  ("rice flour",        158),
-        ("whole wheat flour", 120),  ("flour",             120),
-        ("cornstarch",        128),  ("cocoa powder",       85),
-        ("baking soda",       230),  ("baking powder",     230),
+        // Flours & starches
+        ("all-purpose flour",        120),  ("00 flour",                 116),
+        ("bread flour",              120),  ("cake flour",               120),
+        ("pastry flour",             106),  ("whole wheat pastry flour",  96),
+        ("whole wheat flour",        113),  ("self-rising flour",        113),
+        ("self rising flour",        113),  ("almond flour",              96),
+        ("almond meal",               84),  ("amaranth flour",           103),
+        ("barley flour",              85),  ("brown rice flour",         128),
+        ("buckwheat flour",          120),  ("chickpea flour",            85),
+        ("coconut flour",            128),  ("durum flour",              124),
+        ("hazelnut flour",            89),  ("masa harina",               93),
+        ("oat flour",                 92),  ("potato flour",             184),
+        ("pumpernickel flour",       106),  ("quinoa flour",             110),
+        ("rice flour",               142),  ("rye flour",                106),
+        ("semolina",                 163),  ("sorghum flour",            138),
+        ("soy flour",                140),  ("spelt flour",               99),
+        ("teff flour",               135),  ("cornmeal",                 156),
+        ("polenta",                  163),  ("cornstarch",               112),
+        ("corn starch",              112),  ("potato starch",            152),
+        ("tapioca flour",            113),  ("tapioca starch",           113),
+        ("flour",                    120),
         // Sugars
-        ("powdered sugar",    120),  ("brown sugar",       220),
-        ("granulated sugar",  200),  ("coconut sugar",     200),
-        ("sugar",             200),
-        // Grains & seeds
-        ("oats",               90),  ("quinoa",            185),
-        ("breadcrumbs",       108),  ("couscous",          180),
-        ("rice",              190),
-        // Dairy & fats
-        ("butter",            227),  ("cream cheese",      232),
-        ("sour cream",        230),  ("heavy cream",       238),
-        ("half and half",     242),  ("milk",              240),
-        ("yogurt",            245),  ("olive oil",         216),
-        ("vegetable oil",     218),  ("coconut oil",       218),
-        ("canola oil",        218),
-        // Sweeteners
-        ("maple syrup",       312),  ("honey",             340),
-        ("corn syrup",        312),  ("molasses",          328),
-        // Liquids
-        ("water",             240),  ("broth",             240),
-        ("stock",             240),  ("vinegar",           240),
-        ("soy sauce",         240),  ("wine",              240),
-        ("lemon juice",       244),  ("orange juice",      248),
-        ("tomato sauce",      245),
-        // Nuts & dried fruit
-        ("walnuts",           117),  ("almonds",           143),
-        ("cashews",           137),  ("peanuts",           146),
-        ("pecans",            109),  ("raisins",           165),
-        ("chocolate chips",   170),
-        // Cheeses (shredded/grated)
-        ("parmesan",          100),  ("cheddar",           113),
-        ("mozzarella",        120),
-        // Nut butters
-        ("peanut butter",     258),  ("almond butter",     258),
-        ("tahini",            240),
-        // Pasta (dry)
-        ("pasta",             100),
+        ("granulated sugar",         198),  ("brown sugar",              213),
+        ("powdered sugar",           113),  ("confectioners",            113),
+        ("icing sugar",              113),  ("superfine sugar",          190),
+        ("caster sugar",             190),  ("coconut sugar",            154),
+        ("demerara",                 220),  ("turbinado",                180),
+        ("raw sugar",                180),  ("maple sugar",              156),
+        ("cinnamon sugar",           200),  ("sanding sugar",            228),
+        ("sparkling sugar",          228),  ("sugar",                    198),
+        // Dairy & liquids
+        ("water",                    227),  ("buttermilk",               227),
+        ("heavy cream",              227),  ("half and half",            227),
+        ("sour cream",               227),  ("cream cheese",             227),
+        ("mascarpone",               227),  ("ricotta",                  227),
+        ("cottage cheese",           226),  ("evaporated milk",          226),
+        ("sweetened condensed milk", 312),  ("coconut milk",             241),
+        ("coconut cream",            284),  ("creme fraiche",            226),
+        ("crème fraiche",            226),  ("mayonnaise",               226),
+        ("milk",                     227),  ("cream",                    227),
+        // Cheese (grated)
+        ("parmesan",                 100),  ("feta",                     114),
+        ("cheddar",                  113),  ("mozzarella",               113),
+        // Fats & oils
+        ("butter",                   227),  ("olive oil",                200),
+        ("vegetable oil",            198),  ("canola oil",               198),
+        ("coconut oil",              226),  ("lard",                     226),
+        ("ghee",                     176),  ("shortening",               184),
+        // Liquid sweeteners
+        ("honey",                    336),  ("corn syrup",               312),
+        ("molasses",                 340),  ("maple syrup",              312),
+        ("agave",                    336),  ("boiled cider",             340),
+        ("jam",                      340),  ("preserves",                340),
+        ("jelly",                    340),  ("lemon curd",               226),
+        ("marshmallow",              128),
+        // Nut & seed butters / pastes
+        ("peanut butter",            270),  ("almond butter",            272),
+        ("tahini",                   256),  ("hazelnut spread",          320),
+        ("nutella",                  298),  ("cookie butter",            288),
+        ("almond paste",             259),  ("marzipan",                 290),
+        // Nuts & seeds
+        ("sliced almonds",            86),  ("slivered almonds",         114),
+        ("almonds",                  142),  ("cashews",                  113),
+        ("hazelnuts",                142),  ("macadamia",                149),
+        ("peanuts",                  142),  ("pecans",                   105),
+        ("pine nuts",                142),  ("pistachios",               120),
+        ("walnuts",                  113),  ("sesame seeds",             142),
+        ("chia seeds",               148),  ("flaxseed",                 140),
+        ("flax meal",                100),  ("poppy seeds",              144),
+        ("pumpkin seeds",            160),  ("sunflower seeds",          140),
+        // Grains, oats & crumbs
+        ("rolled oats",               89),  ("old-fashioned oats",        89),
+        ("quick oats",                89),  ("steel cut oats",           140),
+        ("oats",                      89),  ("oatmeal",                   89),
+        ("oat bran",                 106),  ("quinoa",                   177),
+        ("brown rice",               170),  ("rice",                     198),
+        ("pearled barley",           213),  ("barley",                   213),
+        ("bulgur",                   152),  ("cracked wheat",            149),
+        ("wheat germ",               112),  ("wheat bran",                64),
+        ("panko",                     50),  ("breadcrumbs",              112),
+        ("bread crumbs",             112),  ("graham cracker",           100),
+        ("cookie crumbs",             85),
+        // Cocoa & chocolate
+        ("cocoa",                     84),  ("cacao nibs",               120),
+        ("white chocolate chips",    170),  ("mini chocolate chips",     177),
+        ("chocolate chips",          170),  ("chocolate chunks",         170),
+        ("chocolate",                170),
+        // Fruit & vegetables (mashed / puréed / prepared)
+        ("applesauce",               255),  ("apples",                   113),
+        ("pumpkin puree",            227),  ("pumpkin purée",            227),
+        ("mashed banana",            227),  ("banana",                   227),
+        ("mashed sweet potato",      240),  ("mashed potato",            213),
+        ("raisins",                  149),  ("dried cranberries",        114),
+        ("dried cherries",           142),  ("currants",                 142),
+        ("dates",                    149),  ("shredded coconut",          85),
+        ("desiccated coconut",        85),  ("tomato paste",             232),
+        ("tomato sauce",             228),  ("pizza sauce",              228),
+        ("grated carrots",            99),  ("carrots",                  142),
+        ("shredded zucchini",        135),  ("zucchini",                 135),
+        ("onions",                   142),  ("onion",                    142),
+        ("bell pepper",              142),  ("celery",                   142),
+        ("mushrooms",                 78),  ("leeks",                     92),
+        ("scallions",                 64),  ("green onions",              64),
+        ("shallots",                 156),  ("olives",                   142),
+        ("sun-dried tomatoes",       170),  ("sundried tomatoes",        170),
+        ("peaches",                  170),  ("pears",                    163),
+        ("pineapple",                170),  ("strawberries",             167),
+        ("blueberries",              155),  ("raspberries",              120),
+        // Juices
+        ("lemon juice",              224),  ("lime juice",               227),
+        // Misc baking
+        ("vital wheat gluten",       144),  ("matcha",                    96),
     ]
 
     // MARK: - Piece-weight table  (g per one piece)
@@ -208,7 +304,9 @@ enum IngredientConverter {
         (["chicken wing"],       90, "chicken wing"),
         (["chicken"],           170, "chicken piece"),
         (["turkey breast"],     400, "turkey breast"),
-        // Eggs
+        // Eggs — white/yolk listed before the whole egg so they match first
+        (["egg white"],          33, "egg white"),
+        (["egg yolk"],           14, "egg yolk"),
         (["egg"],                50, "egg"),
         // Aromatics
         (["garlic"],              5, "garlic clove"),
@@ -253,25 +351,64 @@ enum IngredientConverter {
 
     // MARK: - Density lookup
 
-    private static func gPerCup(for item: String) -> Double? {
+    static func gPerCup(for item: String) -> Double? {
         let lower = item.lowercased()
-        // Longest matching key wins
+        // The most specific (longest) table key that appears in the ingredient name, so
+        // "almond flour" resolves to 96, not the generic "flour" at 120, and "coconut milk"
+        // to 241, not "milk" at 227. Generic catch-all keys ("flour", "sugar", "milk", "oats")
+        // let bare ingredient names resolve too. No bidirectional/fragment fallback: a name we
+        // can't place returns nil so the caller shows it unchanged, rather than a fragment like
+        // "ice" matching "rice" (audit) and producing a confidently wrong weight.
         return densityTable
-            .filter { lower.contains($0.key) || $0.key.contains(lower) }
+            .filter { lower.contains($0.key) }
             .max(by: { $0.key.count < $1.key.count })
             .map { $0.gPerCup }
     }
 
     // MARK: - Piece lookup
 
-    private static func pieceInfo(for item: String) -> (gPerPiece: Double, label: String)? {
-        let lower = item.lowercased()
+    static func pieceInfo(for item: String) -> (gPerPiece: Double, label: String)? {
+        // Longest whole-word keyword wins, so "cherry tomato" (17 g) beats "tomato" (150 g) and
+        // "sweet potato" (130 g) beats "potato" (150 g) regardless of table order — and whole-word
+        // matching stops "eggplant" from matching "egg" (50 g), the exact audit failures.
+        var best: (length: Int, gPerPiece: Double, label: String)?
         for entry in pieceTable {
-            if entry.keywords.contains(where: { lower.contains($0) || $0.contains(lower) }) {
-                return (entry.gPerPiece, entry.label)
+            for keyword in entry.keywords where Self.matchesWholeWord(keyword, in: item) {
+                if best == nil || keyword.count > best!.length {
+                    best = (keyword.count, entry.gPerPiece, entry.label)
+                }
             }
         }
-        return nil
+        return best.map { (gPerPiece: $0.gPerPiece, label: $0.label) }
+    }
+
+    /// True when `phrase` (one or more words) appears in `text` as consecutive whole words,
+    /// tolerating simple plurals of the (singular) keyword — "tomato" matches "cherry tomatoes",
+    /// but "egg" does NOT match "eggplant".
+    static func matchesWholeWord(_ phrase: String, in text: String) -> Bool {
+        let words = tokenize(text)
+        let needle = tokenize(phrase)
+        guard !needle.isEmpty, needle.count <= words.count else { return false }
+        for start in 0...(words.count - needle.count)
+        where zip(words[start ..< start + needle.count], needle).allSatisfy({ wordEquals($0.0, $0.1) }) {
+            return true
+        }
+        return false
+    }
+
+    private static func tokenize(_ s: String) -> [String] {
+        s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+    }
+
+    /// Item word equals the keyword, or a simple plural of it (egg→eggs, tomato→tomatoes,
+    /// cherry→cherries). Keywords are authored singular, so we expand the keyword, never stem
+    /// the item — which avoids mangling words like "molasses".
+    private static func wordEquals(_ itemWord: String, _ keyWord: String) -> Bool {
+        if itemWord == keyWord || itemWord == keyWord + "s" || itemWord == keyWord + "es" {
+            return true
+        }
+        if keyWord.hasSuffix("y"), itemWord == String(keyWord.dropLast()) + "ies" { return true }
+        return false
     }
 
     // MARK: - Intermediate conversions
@@ -397,7 +534,13 @@ enum IngredientConverter {
             return Double(s[r])
         }
         guard vals.count >= 2 else { return nil }
-        let a = vals[0], b = vals[1], c = vals.count > 2 ? vals[2] : 0
+        // Align captures to the closure's (a, b, c) slots. Two-group patterns (fraction "3/4",
+        // range "2-3") must fill (b, c), not (a, b): their closures read the LAST two slots, and
+        // the old zero-fill of `c` made "3/4" compute 4/0 = ∞ and "2-3" a wrong midpoint —
+        // caught by IngredientConverterTests when CI first ran them.
+        let a = vals.count > 2 ? vals[0] : 0
+        let b = vals.count > 2 ? vals[1] : vals[0]
+        let c = vals.count > 2 ? vals[2] : vals[1]
         return combine(a, b, c)
     }
 }
