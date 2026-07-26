@@ -534,7 +534,13 @@ enum IngredientConverter {
             return Double(s[r])
         }
         guard vals.count >= 2 else { return nil }
-        let a = vals[0], b = vals[1], c = vals.count > 2 ? vals[2] : 0
+        // Align captures to the closure's (a, b, c) slots. Two-group patterns (fraction "3/4",
+        // range "2-3") must fill (b, c), not (a, b): their closures read the LAST two slots, and
+        // the old zero-fill of `c` made "3/4" compute 4/0 = ∞ and "2-3" a wrong midpoint —
+        // caught by IngredientConverterTests when CI first ran them.
+        let a = vals.count > 2 ? vals[0] : 0
+        let b = vals.count > 2 ? vals[1] : vals[0]
+        let c = vals.count > 2 ? vals[2] : vals[1]
         return combine(a, b, c)
     }
 }
