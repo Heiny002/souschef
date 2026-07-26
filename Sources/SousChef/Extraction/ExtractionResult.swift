@@ -10,6 +10,9 @@ struct ExtractionResult: Sendable {
     var ingredients: [RawIngredient]
     var steps: [RawStep]
     var appliances: [String]
+    /// Special equipment the cook might not own (air fryer, sous vide, pressure cooker) —
+    /// the subset of `appliances` worth flagging before they start.
+    var equipment: [String] = []
     var description: String?
     var confidence: Double  // 0.0 – 1.0
     var extractionMethod: String

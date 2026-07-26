@@ -101,7 +101,9 @@ struct ReviewView: View {
                         }
                         titleSection
                         yieldSection
+                        equipmentSection
                         ingredientsSection
+                        if partOrder.count > 1 { partOrderSection }
                         stepsSection
                         if let report = validationReport {
                             validationSection(report: report)
@@ -250,6 +252,111 @@ struct ReviewView: View {
             }
             addButton("Add ingredient") {
                 ingredients.append(EditableIngredient(raw: RawIngredient(text: "")))
+            }
+        }
+    }
+
+    /// The recipe's parts in their current order (first appearance).
+    private var partOrder: [String] {
+        var seen: [String] = []
+        for step in steps {
+            guard let s = step.section, !s.isEmpty, !seen.contains(s) else { continue }
+            seen.append(s)
+        }
+        return seen
+    }
+
+    /// Move a whole part (all of its steps, in order) up or down relative to the other parts.
+    /// The suggested order leads with the longest part, but the cook knows their kitchen —
+    /// this lets them override it before saving.
+    private func movePart(_ part: String, by offset: Int) {
+        var order = partOrder
+        guard let idx = order.firstIndex(of: part) else { return }
+        let target = idx + offset
+        guard order.indices.contains(target) else { return }
+        order.swapAt(idx, target)
+
+        // Rebuild the step list part-by-part in the new order; unsectioned steps stay in
+        // front (they're shared prep like "preheat the oven").
+        let unsectioned = steps.filter { ($0.section ?? "").isEmpty }
+        var rebuilt = unsectioned
+        for name in order {
+            rebuilt.append(contentsOf: steps.filter { $0.section == name })
+        }
+        withAnimation(.easeInOut(duration: 0.2)) { steps = rebuilt }
+    }
+
+    /// Reorderable list of the recipe's parts, shown above the steps when there's more than one.
+    private var partOrderSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Label("Order of parts", systemImage: "arrow.up.arrow.down")
+                .font(.scLabel)
+                .foregroundStyle(Color.scAccent)
+            Text("Suggested longest-first so slow parts start early. Rearrange if you'd rather cook in another order.")
+                .font(.scCaption)
+                .foregroundStyle(Color.scTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(Array(partOrder.enumerated()), id: \.element) { idx, part in
+                HStack(spacing: Spacing.sm) {
+                    Text("\(idx + 1)")
+                        .font(.scLabel)
+                        .foregroundStyle(Color.scAccent)
+                        .frame(width: 20, alignment: .leading)
+                    Text(part)
+                        .font(.scBody)
+                        .foregroundStyle(Color.scTextPrimary)
+                    Spacer()
+                    Button { movePart(part, by: -1) } label: {
+                        Image(systemName: "chevron.up")
+                            .frame(width: 32, height: 32)
+                    }
+                    .disabled(idx == 0)
+                    .foregroundStyle(idx == 0 ? Color.scTextSecondary.opacity(0.3) : Color.scAccent)
+                    .accessibilityLabel("Move \(part) earlier")
+
+                    Button { movePart(part, by: 1) } label: {
+                        Image(systemName: "chevron.down")
+                            .frame(width: 32, height: 32)
+                    }
+                    .disabled(idx == partOrder.count - 1)
+                    .foregroundStyle(idx == partOrder.count - 1
+                                     ? Color.scTextSecondary.opacity(0.3) : Color.scAccent)
+                    .accessibilityLabel("Move \(part) later")
+                }
+                .padding(.horizontal, Spacing.sm)
+                .padding(.vertical, 4)
+                .background(Color.scSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    /// Special equipment callout — an air fryer or pressure cooker decides whether the cook
+    /// can make this at all, so it belongs at review time, not buried on the detail screen.
+    @ViewBuilder
+    private var equipmentSection: some View {
+        let equipment = extractionResult.equipment.isEmpty
+            ? ApplianceDetector.detectSpecialEquipment(
+                in: ingredients.map(\.text) + steps.map(\.text))
+            : extractionResult.equipment
+        if !equipment.isEmpty {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Label("You'll need", systemImage: "wrench.and.screwdriver")
+                    .font(.scLabel)
+                    .foregroundStyle(Color.scAccent)
+                FlowLayout(spacing: Spacing.xs) {
+                    ForEach(equipment, id: \.self) { item in
+                        Text(item.capitalized)
+                            .font(.scCaption)
+                            .padding(.horizontal, Spacing.sm)
+                            .padding(.vertical, 6)
+                            .background(Color.scSurface)
+                            .foregroundStyle(Color.scTextPrimary)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.scBorder, lineWidth: 1))
+                    }
+                }
             }
         }
     }
@@ -495,7 +602,14 @@ struct ReviewView: View {
         }
         recipe.recipeYield = recipeYield.isEmpty ? nil : recipeYield
         recipe.recipeDescription = extractionResult.description
-        recipe.appliances = extractionResult.appliances
+        // Appliances: keep the full detected list, but make sure the special equipment the
+        // review screen showed is present even when it came from the LLM rather than detection.
+        var appliances = extractionResult.appliances
+        for item in extractionResult.equipment
+        where !appliances.contains(where: { $0.caseInsensitiveCompare(item) == .orderedSame }) {
+            appliances.append(item)
+        }
+        recipe.appliances = appliances
         recipe.prepTime = extractionResult.prepTime
         recipe.cookTime = extractionResult.cookTime
         recipe.totalTime = extractionResult.totalTime
@@ -519,9 +633,11 @@ struct ReviewView: View {
         // For a multi-component recipe (steak / flatbread / spread…), lead with the
         // longest-cooking component so the slow part is underway while the quick parts
         // get made — unless the margin is within a few minutes, where the author's order wins.
+        // Save the order shown on screen verbatim. Component sequencing already ran when the
+        // extraction was built, and the review screen lets the cook rearrange the parts — so
+        // re-sequencing here would silently undo their choice.
         let kept = steps.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
-        let sequenced = ComponentSequencer.sequence(kept.map { (text: $0.text, section: $0.section) })
-        recipe.steps = sequenced.enumerated().map { idx, step in
+        recipe.steps = kept.enumerated().map { idx, step in
             CookingStep(order: idx + 1, instruction: step.text, rawText: step.text, section: step.section)
         }
 

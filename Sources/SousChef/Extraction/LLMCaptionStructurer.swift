@@ -122,8 +122,15 @@ actor LLMCaptionStructurer {
           "prepTimeMinutes": number or null,
           "cookTimeMinutes": number or null,
           "ingredients": [{"text": "string", "section": "string or null"}],
-          "steps": [{"text": "string", "section": "string or null", "items": ["string"] or null}]
+          "steps": [{"text": "string", "section": "string or null", "items": ["string"] or null}],
+          "equipment": ["string"]
         }
+
+        "equipment": special appliances or tools the recipe requires that a cook might not \
+        own — air fryer, sous vide circulator, pressure cooker / Instant Pot, slow cooker, \
+        stand mixer, food processor, smoker, mandoline, kitchen torch, thermometer. Include \
+        an item only if the recipe genuinely needs it. Skip everyday things (bowl, knife, \
+        spoon, pan, oven, stovetop). Empty array when nothing special is needed.
 
         Caption:
         \(caption)
@@ -188,6 +195,16 @@ actor LLMCaptionStructurer {
             }
             result.steps = steps
         }
+
+        // Union the model's explicit equipment list with keyword detection: the model catches
+        // equipment implied by technique, detection catches what the model omits.
+        var equipment = (dict["equipment"] as? [Any])?.compactMap { ($0 as? String)?.nonEmpty } ?? []
+        for detected in ApplianceDetector.detectSpecialEquipment(
+            in: result.ingredients.map { $0.text } + result.steps.map { $0.text })
+        where !equipment.contains(where: { $0.caseInsensitiveCompare(detected) == .orderedSame }) {
+            equipment.append(detected)
+        }
+        result.equipment = equipment
 
         result.appliances = ApplianceDetector.detect(
             in: result.ingredients.map { $0.text } + result.steps.map { $0.text }

@@ -203,6 +203,17 @@ actor ExtractionPipeline {
             }
         }
 
+        // Multi-part recipes: lead with the longest-running component so the slow part is
+        // underway while the quick parts get made. Done here, before review, so the cook sees
+        // (and can rearrange) the suggested order on the review screen.
+        if result.steps.contains(where: { !($0.section ?? "").isEmpty }) {
+            let sequenced = ComponentSequencer.sequence(
+                result.steps.map { (text: $0.text, section: $0.section) })
+            result.steps = sequenced.enumerated().map { idx, step in
+                RawStep(order: idx + 1, text: step.text, section: step.section)
+            }
+        }
+
         // Attach provenance + photo so a caption-parsed import still shows its Instagram badge,
         // source link and thumbnail (regardless of which extractor won).
         result.originalSourceURL = urlString

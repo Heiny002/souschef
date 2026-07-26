@@ -31,6 +31,27 @@ struct CookModeView: View {
     }
     @State private var microSteps: [MicroStep] = []
     @State private var showInstructions = false
+    /// Where the cook left off in each part, so switching away and back resumes rather than
+    /// restarting — the whole point of the tabs: start the flatbread, jump to the steak while
+    /// it bakes, come back to exactly where the flatbread was.
+    @State private var lastIndexPerPart: [String: Int] = [:]
+
+    /// The recipe's parts in their cooking order (first appearance), for the tab row.
+    private var parts: [String] {
+        var seen: [String] = []
+        for step in microSteps {
+            guard let s = step.section, !s.isEmpty, !seen.contains(s) else { continue }
+            seen.append(s)
+        }
+        return seen
+    }
+
+    /// Jump to a part, resuming where the cook left off in it.
+    private func jumpToPart(_ part: String) {
+        let target = lastIndexPerPart[part]
+            ?? microSteps.firstIndex { $0.section == part }
+        if let target { jump(to: target) }
+    }
 
     /// True when this step begins a new component — the heading only shows at the boundary,
     /// so it reads as a chapter title rather than repeating on every step.
@@ -80,6 +101,12 @@ struct CookModeView: View {
             // Returning from lock/background: snap every countdown back to wall-clock
             // truth immediately instead of waiting for the next ticker fire.
             if phase == .active { timers.reconcile() }
+        }
+        .onChange(of: currentIndex) { _, idx in
+            // Remember where we are in this part so returning to it resumes here.
+            if let part = microSteps[safe: idx]?.section, !part.isEmpty {
+                lastIndexPerPart[part] = idx
+            }
         }
         .onChange(of: timers.justCompleted) { _, done in
             // Speak the guidance so a cook with messy hands hears what to do next.
@@ -309,6 +336,13 @@ struct CookModeView: View {
                     .padding(.horizontal, Spacing.md)
                     .padding(.top, geo.safeAreaInsets.top + Spacing.sm)
 
+                // Part tabs for a multi-component recipe — jump between the steak, the
+                // flatbread and the spread, each resuming where you left off.
+                if parts.count > 1 {
+                    partTabs
+                        .padding(.top, Spacing.sm)
+                }
+
                 // Minimal timer chips — one per active timer, tap to see its step.
                 if timers.hasTimers {
                     timerChips
@@ -317,9 +351,9 @@ struct CookModeView: View {
 
                 Spacer()
 
-                // Component heading ("Flatbread", "Steak") — shown at the start of each part
-                // of a multi-component recipe so the cook knows which sub-recipe they're on.
-                if let section = current?.section, !section.isEmpty {
+                // Component heading — only when there are no tabs (a single named part);
+                // with tabs the highlighted pill already says which part you're on.
+                if parts.count == 1, let section = current?.section, !section.isEmpty {
                     sectionHeading(section)
                         .padding(.horizontal, Spacing.lg)
                         .padding(.bottom, Spacing.sm)
@@ -403,6 +437,53 @@ struct CookModeView: View {
                 .accessibilityLabel("View all instructions")
             }
         }
+    }
+
+    // MARK: - Part tabs
+
+    /// One pill per component, in cooking order. The active part is filled; a part with a
+    /// running timer shows a dot so you can see at a glance that something's cooking there.
+    private var partTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Spacing.xs) {
+                ForEach(parts, id: \.self) { part in
+                    partPill(part)
+                }
+            }
+            .padding(.horizontal, Spacing.md)
+        }
+    }
+
+    private func partPill(_ part: String) -> some View {
+        let isActive = current?.section == part
+        let hasRunningTimer = timers.runningTimers.contains {
+            microSteps[safe: $0.stepIndex]?.section == part
+        }
+        return Button {
+            jumpToPart(part)
+        } label: {
+            HStack(spacing: 5) {
+                if hasRunningTimer {
+                    Circle()
+                        .fill(isActive ? Color.scBackground : Color.scAccent)
+                        .frame(width: 6, height: 6)
+                }
+                Text(part)
+                    .font(.scCaption)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, 7)
+            .background(isActive ? Color.scAccent : Color.scSurface)
+            .foregroundStyle(isActive ? Color.scBackground : Color.scTextSecondary)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(
+                isActive ? Color.clear : Color.scBorder, lineWidth: 1))
+        }
+        .animation(.easeInOut(duration: 0.2), value: isActive)
+        .accessibilityLabel(part)
+        .accessibilityHint(isActive ? "Current part" : "Switch to \(part)")
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
     }
 
     // MARK: - Timer chips
