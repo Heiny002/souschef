@@ -34,6 +34,27 @@ enum SocialTextFilter {
         return trimmed
     }
 
+    // MARK: - Caption prefix
+
+    /// Instagram's og:description — which several fetch routes use as the caption — is
+    /// `N likes, M comments - user on Date: "the real caption"`. Left in place, that
+    /// engagement preamble becomes the caption's first line and therefore the recipe's
+    /// title. Strip everything up to the opening quote that introduces the real caption.
+    static func stripEngagementPrefix(_ caption: String) -> String {
+        // Only strip when the string actually starts with the engagement preamble, so a
+        // caption that legitimately contains a quote isn't truncated.
+        let head = caption.prefix(200)
+        guard isMetadataTitle(String(head)) else { return caption }
+        for delimiter in [": \u{201C}", ": \"", ": "] {
+            if let r = caption.range(of: delimiter) {
+                let body = caption[r.upperBound...]
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"\u{201C}\u{201D} \n\r\t"))
+                if !body.isEmpty { return body }
+            }
+        }
+        return caption
+    }
+
     // MARK: - Caption lines
 
     /// Calls to action and engagement bait — never part of a recipe.

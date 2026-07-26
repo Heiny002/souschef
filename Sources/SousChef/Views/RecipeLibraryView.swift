@@ -379,6 +379,7 @@ struct RecipeDetailView: View {
     @State private var showCompatibility = false
     @State private var unitMode: UnitMode = .original
     @State private var showDeleteConfirm = false
+    @State private var showEdit = false
     @State private var targetServings = 0   // 0 = follow the recipe's own yield
 
     var body: some View {
@@ -507,6 +508,11 @@ struct RecipeDetailView: View {
                     }
                 }
                 Menu {
+                    Button {
+                        showEdit = true
+                    } label: {
+                        Label("Edit Recipe", systemImage: "pencil")
+                    }
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
@@ -537,6 +543,10 @@ struct RecipeDetailView: View {
         }
         .sheet(isPresented: $showCompatibility) {
             CompatibilityView(recipe: recipe, diners: allDiners)
+        }
+        .sheet(isPresented: $showEdit) {
+            // Same form as import review, but saving updates this recipe in place.
+            ReviewView(editing: recipe)
         }
     }
 

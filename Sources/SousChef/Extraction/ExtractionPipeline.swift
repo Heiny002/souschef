@@ -85,6 +85,10 @@ actor ExtractionPipeline {
         // Captions from Instagram/TikTok arrive HTML-encoded — decode so bullets, dashes,
         // and ampersands don't show as &#x2022; / &#x2013; / &amp; downstream.
         captionText = captionText.decodedHTMLEntities
+        // Several routes hand back og:description as the caption, which Instagram prefixes
+        // with "69K likes, 417 comments - user on July 3: …". Without stripping it the
+        // preamble becomes the caption's first line and then the recipe's title.
+        captionText = SocialTextFilter.stripEngagementPrefix(captionText)
 
         // Step 2: Try transcript endpoint (may be unavailable / server down)
         var videoTranscript: VideoTranscript?

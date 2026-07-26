@@ -22,6 +22,32 @@ final class ComponentSequencerTests: XCTestCase {
 
     // MARK: Grouping
 
+    func testComponentTimeSumsPrepAndCook() {
+        // The real miss: flatbread's dough rest + bake must beat a steak's single sear.
+        let steps: [(text: String, section: String?)] = [
+            ("Sear the steak for 10 minutes", "Steak"),
+            ("Let the dough rest 30 minutes", "Flatbread"),
+            ("Bake the flatbreads 18-20 minutes", "Flatbread"),
+        ]
+        let components = ComponentSequencer.components(from: steps)
+        let flatbread = components.first { $0.name == "Flatbread" }
+        XCTAssertEqual(flatbread?.cookSeconds, 50 * 60, "30 min rest + 20 min bake")
+        XCTAssertEqual(ComponentSequencer.sequence(steps).first?.section, "Flatbread")
+    }
+
+    func testUnnamedSharedPrepDoesNotBlockReordering() {
+        // A leading unsectioned step ("preheat") used to disable sequencing entirely.
+        let steps: [(text: String, section: String?)] = [
+            ("Preheat the oven to 450F", nil),
+            ("Sear the steak for 10 minutes", "Steak"),
+            ("Bake the flatbreads 18-20 minutes", "Flatbread"),
+        ]
+        let result = ComponentSequencer.sequence(steps)
+        XCTAssertNil(result.first?.section, "shared prep stays pinned at the top")
+        XCTAssertEqual(result[1].section, "Flatbread", "the slow part still leads the components")
+        XCTAssertEqual(result.count, 3)
+    }
+
     func testGroupsStepsByComponentPreservingFirstAppearance() {
         let steps: [(text: String, section: String?)] = [
             ("Season the steak", "Steak"),

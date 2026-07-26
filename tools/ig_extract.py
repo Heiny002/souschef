@@ -465,7 +465,24 @@ def is_noise(line):
     return core.startswith(CTA) or core.startswith(NARRATIVE)
 
 
+ENGAGEMENT = re.compile(r"\d+(\.\d+)?[km]?\s+(likes?|comments?|views?|shares?)", re.I)
+
+
+def strip_engagement_prefix(cap):
+    """Instagram og:description is 'N likes, M comments - user on Date: "caption"'."""
+    if not ENGAGEMENT.search(cap[:200]):
+        return cap
+    for d in (': \u201c', ': "', ': '):
+        i = cap.find(d)
+        if i != -1:
+            body = cap[i + len(d):].strip('"\u201c\u201d \n\r\t')
+            if body:
+                return body
+    return cap
+
+
 def clean_caption(cap):
+    cap = strip_engagement_prefix(cap)
     return "\n".join(line for line in cap.split("\n") if not is_noise(line))
 
 

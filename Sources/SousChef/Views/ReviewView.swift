@@ -8,6 +8,8 @@ struct ReviewView: View {
     @Environment(\.dismiss) private var dismiss
 
     let extractionResult: ExtractionResult
+    /// Non-nil when editing a recipe already in the library — save updates it in place.
+    let editingRecipe: Recipe?
     let onSave: ((Recipe) -> Void)?
     let onRetry: (() -> Void)?
     let screenTitle: String
@@ -38,17 +40,51 @@ struct ReviewView: View {
         onSave: ((Recipe) -> Void)? = nil,
         onRetry: (() -> Void)? = nil,
         screenTitle: String = "Review Recipe",
-        showsCancelButton: Bool = false
+        showsCancelButton: Bool = false,
+        editing: Recipe? = nil
     ) {
         self.extractionResult = result
         self.onSave = onSave
         self.onRetry = onRetry
         self.screenTitle = screenTitle
         self.showsCancelButton = showsCancelButton
+        self.editingRecipe = editing
         _title = State(initialValue: result.title ?? "")
         _recipeYield = State(initialValue: result.recipeYield ?? "")
         _ingredients = State(initialValue: result.ingredients.map { EditableIngredient(raw: $0) })
         _steps = State(initialValue: result.steps.map { EditableStep(raw: $0) })
+    }
+
+    /// Edit a recipe already in the library: the same form, but saving updates that recipe
+    /// in place instead of inserting a new one.
+    init(editing recipe: Recipe, onSave: ((Recipe) -> Void)? = nil) {
+        self.init(
+            result: Self.result(from: recipe),
+            onSave: onSave,
+            screenTitle: "Edit Recipe",
+            showsCancelButton: true,
+            editing: recipe
+        )
+    }
+
+    /// Snapshot an existing recipe back into the shape the form edits.
+    static func result(from recipe: Recipe) -> ExtractionResult {
+        var r = ExtractionResult(extractionMethod: recipe.extractionMethod)
+        r.title = recipe.title
+        r.recipeYield = recipe.recipeYield
+        r.description = recipe.recipeDescription
+        r.appliances = recipe.appliances
+        r.prepTime = recipe.prepTime
+        r.cookTime = recipe.cookTime
+        r.totalTime = recipe.totalTime
+        r.thumbnailURL = recipe.thumbnailURL
+        r.originalSourceURL = recipe.sourceURL
+        r.confidence = recipe.extractionConfidence
+        r.ingredients = recipe.ingredients.sorted { $0.order < $1.order }
+            .map { RawIngredient(text: $0.rawText, section: $0.section) }
+        r.steps = recipe.steps.sorted { $0.order < $1.order }
+            .map { RawStep(order: $0.order, text: $0.instruction, section: $0.section) }
+        return r
     }
 
     var body: some View {
@@ -441,14 +477,22 @@ struct ReviewView: View {
         let storedURL = extractionResult.recipePageURL ?? extractionResult.originalSourceURL
         let platformURL = extractionResult.originalSourceURL ?? extractionResult.recipePageURL
 
-        let recipe = Recipe(
-            title: title.trimmingCharacters(in: .whitespaces),
-            sourceURL: storedURL,
-            sourceType: resolvedSourceType(platformURL: platformURL),
-            extractionConfidence: extractionResult.confidence,
-            extractionMethod: extractionResult.extractionMethod
-        )
-        recipe.thumbnailURL = extractionResult.thumbnailURL
+        // Editing an existing library recipe updates it in place (keeping its id, provenance
+        // and date added); a fresh import creates a new one.
+        let recipe: Recipe
+        if let editingRecipe {
+            recipe = editingRecipe
+            recipe.title = title.trimmingCharacters(in: .whitespaces)
+        } else {
+            recipe = Recipe(
+                title: title.trimmingCharacters(in: .whitespaces),
+                sourceURL: storedURL,
+                sourceType: resolvedSourceType(platformURL: platformURL),
+                extractionConfidence: extractionResult.confidence,
+                extractionMethod: extractionResult.extractionMethod
+            )
+            recipe.thumbnailURL = extractionResult.thumbnailURL
+        }
         recipe.recipeYield = recipeYield.isEmpty ? nil : recipeYield
         recipe.recipeDescription = extractionResult.description
         recipe.appliances = extractionResult.appliances
@@ -481,7 +525,7 @@ struct ReviewView: View {
             CookingStep(order: idx + 1, instruction: step.text, rawText: step.text, section: step.section)
         }
 
-        modelContext.insert(recipe)
+        if editingRecipe == nil { modelContext.insert(recipe) }
         onSave?(recipe)
         dismiss()
     }

@@ -106,6 +106,13 @@ actor LLMCaptionStructurer {
         step text so it reads naturally without them ("Season the steak with olive oil and \
         spices, then mix well"). Use null for "items" when there's no such list.
         - Do NOT invent quantities, ingredients, or steps that aren't in the caption.
+        - NEVER return a hashtag line, an @mention, or a call to action ("save this", \
+        "follow for more") as a step or an ingredient.
+        - Title: if the caption names the dish, use that. If it does NOT, WRITE a short \
+        descriptive title from the actual ingredients and method (e.g. "Peach Burrata Toast", \
+        "Steak and Flatbread Wraps") — 2 to 5 words, no emoji, no hashtags, no creator handle, \
+        and never engagement text like "69K likes, 417 comments". Only use null when the \
+        caption isn't a recipe at all.
         - If the caption is not a recipe, return {"title": null, "ingredients": [], "steps": []}.
 
         Return ONLY valid JSON (no prose, no code fences) matching this schema:
@@ -135,7 +142,9 @@ actor LLMCaptionStructurer {
         }
 
         var result = ExtractionResult(extractionMethod: method)
-        result.title = (dict["title"] as? String)?.nonEmpty
+        // A model that ignores the prompt must not be able to smuggle engagement text into
+        // the title — the filter is the backstop, the prompt is the request.
+        result.title = SocialTextFilter.cleanTitle((dict["title"] as? String)?.nonEmpty)
         result.recipeYield = (dict["recipeYield"] as? String)?.nonEmpty
         if let prepMins = dict["prepTimeMinutes"] as? Int { result.prepTime = prepMins * 60 }
         if let cookMins = dict["cookTimeMinutes"] as? Int { result.cookTime = cookMins * 60 }
@@ -145,10 +154,11 @@ actor LLMCaptionStructurer {
         if let raw = dict["ingredients"] as? [Any] {
             result.ingredients = raw.compactMap { item -> RawIngredient? in
                 if let obj = item as? [String: Any] {
-                    guard let text = (obj["text"] as? String)?.nonEmpty else { return nil }
+                    guard let text = (obj["text"] as? String)?.nonEmpty,
+                          !SocialTextFilter.isNoiseLine(text) else { return nil }
                     return RawIngredient(text: text, section: (obj["section"] as? String)?.nonEmpty)
                 }
-                if let text = (item as? String)?.nonEmpty {
+                if let text = (item as? String)?.nonEmpty, !SocialTextFilter.isNoiseLine(text) {
                     return RawIngredient(text: text, section: nil)
                 }
                 return nil
@@ -162,14 +172,17 @@ actor LLMCaptionStructurer {
             var steps: [RawStep] = []
             for item in rawSteps {
                 if let obj = item as? [String: Any] {
-                    guard let text = (obj["text"] as? String)?.nonEmpty else { continue }
+                    // Drop hashtag walls / CTAs the model let through — a recipe's last step
+                    // must never be "#easyrecipes #summerfood".
+                    guard let text = (obj["text"] as? String)?.nonEmpty,
+                          !SocialTextFilter.isNoiseLine(text) else { continue }
                     let bullets = (obj["items"] as? [Any])?.compactMap { ($0 as? String)?.nonEmpty } ?? []
                     let body = bullets.isEmpty
                         ? text
                         : text + "\n" + bullets.map { "• \($0)" }.joined(separator: "\n")
                     steps.append(RawStep(order: steps.count + 1, text: body,
                                          section: (obj["section"] as? String)?.nonEmpty))
-                } else if let text = (item as? String)?.nonEmpty {
+                } else if let text = (item as? String)?.nonEmpty, !SocialTextFilter.isNoiseLine(text) {
                     steps.append(RawStep(order: steps.count + 1, text: text))
                 }
             }

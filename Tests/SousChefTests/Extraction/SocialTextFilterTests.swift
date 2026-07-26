@@ -73,6 +73,24 @@ final class SocialTextFilterTests: XCTestCase {
         XCTAssertTrue(cleaned.contains("\n\n"), "blank line preserved so headers still parse")
     }
 
+    // MARK: Engagement prefix on the caption itself
+
+    func testStripsEngagementPrefixFromCaption() {
+        // Instagram's og:description IS the caption on several fetch routes, and it's
+        // prefixed with engagement counts — which became the recipe's title.
+        let og = "69K likes, 417 comments - foodswings.by.jose on July 3, 2025: \"Peach burrata toast\n1 loaf sourdough\nGrill the bread.\""
+        let caption = SocialTextFilter.stripEngagementPrefix(og)
+        XCTAssertTrue(caption.hasPrefix("Peach burrata toast"))
+        XCTAssertFalse(caption.contains("69K likes"))
+        XCTAssertTrue(caption.contains("1 loaf sourdough"), "the rest of the caption survives")
+    }
+
+    func testOrdinaryCaptionIsNotTruncatedByPrefixStripping() {
+        // A caption with a colon or quote but no engagement preamble must be left alone.
+        let caption = "Grandma's pasta: the only recipe you need\n2 cups flour"
+        XCTAssertEqual(SocialTextFilter.stripEngagementPrefix(caption), caption)
+    }
+
     // MARK: The emoji-header regression
 
     func testEmojiDecoratedIngredientsHeaderIsRecognized() {
