@@ -98,6 +98,13 @@ actor LLMCaptionStructurer {
         that label without the trailing colon (e.g. "Steak", "For the sauce"); otherwise \
         "section" is null.
         - Steps: one action per entry, in order, with NO leading number or bullet.
+        - Each step's "section" is the component it belongs to, matching the ingredient \
+        sections ("Steak", "Flatbread"); null when the recipe has no separate components.
+        - When a step applies three or more items at once — a spice blend, a set of \
+        seasonings, several add-ins — put them in that step's "items" array (each with its \
+        own quantity) instead of cramming them into the sentence in parentheses. Write the \
+        step text so it reads naturally without them ("Season the steak with olive oil and \
+        spices, then mix well"). Use null for "items" when there's no such list.
         - Do NOT invent quantities, ingredients, or steps that aren't in the caption.
         - If the caption is not a recipe, return {"title": null, "ingredients": [], "steps": []}.
 
@@ -108,7 +115,7 @@ actor LLMCaptionStructurer {
           "prepTimeMinutes": number or null,
           "cookTimeMinutes": number or null,
           "ingredients": [{"text": "string", "section": "string or null"}],
-          "steps": ["string"]
+          "steps": [{"text": "string", "section": "string or null", "items": ["string"] or null}]
         }
 
         Caption:
@@ -148,9 +155,25 @@ actor LLMCaptionStructurer {
             }
         }
 
+        // Steps tolerate both shapes: [{"text","section","items"}] (requested) and ["…"].
+        // An "items" list is rendered as a bulleted block under the sentence — spice blends
+        // and multi-item additions read far better as a list than as inline parentheses.
         if let rawSteps = dict["steps"] as? [Any] {
-            let texts = rawSteps.compactMap { ($0 as? String)?.nonEmpty }
-            result.steps = texts.enumerated().map { idx, text in RawStep(order: idx + 1, text: text) }
+            var steps: [RawStep] = []
+            for item in rawSteps {
+                if let obj = item as? [String: Any] {
+                    guard let text = (obj["text"] as? String)?.nonEmpty else { continue }
+                    let bullets = (obj["items"] as? [Any])?.compactMap { ($0 as? String)?.nonEmpty } ?? []
+                    let body = bullets.isEmpty
+                        ? text
+                        : text + "\n" + bullets.map { "• \($0)" }.joined(separator: "\n")
+                    steps.append(RawStep(order: steps.count + 1, text: body,
+                                         section: (obj["section"] as? String)?.nonEmpty))
+                } else if let text = (item as? String)?.nonEmpty {
+                    steps.append(RawStep(order: steps.count + 1, text: text))
+                }
+            }
+            result.steps = steps
         }
 
         result.appliances = ApplianceDetector.detect(

@@ -44,6 +44,9 @@ struct RawIngredient: Sendable {
 struct RawStep: Sendable {
     var order: Int
     var text: String
+    /// Component of a multi-part recipe this step belongs to ("Flatbread", "Steak") —
+    /// set by the LLM structurer; nil for single-component recipes.
+    var section: String?
 }
 
 /// Confidence thresholds for the extraction chain.

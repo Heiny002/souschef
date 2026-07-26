@@ -76,13 +76,18 @@ final class CookingStep {
     var temperature: String?
     var timerLabel: String?
     var rawText: String
+    /// Component of a multi-part recipe this step belongs to ("Flatbread", "Steak").
+    /// Cook Mode shows it as a heading above the step. Inline default keeps SwiftData's
+    /// lightweight migration working for recipes saved before this field existed.
+    var section: String? = nil
 
     var recipe: Recipe?
 
-    init(order: Int, instruction: String, rawText: String) {
+    init(order: Int, instruction: String, rawText: String, section: String? = nil) {
         self.id = UUID()
         self.order = order
         self.instruction = instruction
         self.rawText = rawText
+        self.section = section
     }
 }

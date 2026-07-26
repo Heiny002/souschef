@@ -379,6 +379,9 @@ def strip_marker(l):
 
 def norm_header(l):
     s = re.sub(r"^[#>*_`\s]+", "", l.strip())
+    # Strip decorative emoji so "\U0001f90d\U0001f351 Ingredients for 2" is still seen as a header.
+    while s and not s[0].isalnum():
+        s = s[1:]
     s = re.sub(r"[#*_`:：\s]+$", "", s)
     s = re.sub(r"^\d+[.)]\s*", "", s)
     return s.strip().lower()
@@ -436,17 +439,34 @@ def split_inline_numbered(line):
     return parts if len(parts) > 1 else [strip_marker(line)]
 
 
+CTA = ("save this", "save it", "save for later", "follow for more", "follow me",
+       "comment below", "comment ", "drop a ", "tag a friend", "tag someone", "double tap",
+       "like and", "share this", "link in bio", "recipe in bio", "full recipe",
+       "check out my", "subscribe", "hit the", "let me know", "who would you",
+       "watch till", "part 1", "new video")
+NARRATIVE = ("the kind of", "this is the", "trust me", "obsessed with", "my favorite",
+             "you guys", "i can't stop", "pov:", "when you", "nothing beats", "if you love")
+
+
+def is_noise(line):
+    """Mirrors SocialTextFilter.isNoiseLine in the app."""
+    t = line.strip()
+    if not t:
+        return False
+    toks = t.split()
+    if toks and all(x.startswith("#") or x.startswith("@") for x in toks):
+        return True
+    if not any(c.isalnum() for c in t):
+        return True
+    core = t
+    while core and not (core[0].isalnum()):
+        core = core[1:]
+    core = core.strip().lower()
+    return core.startswith(CTA) or core.startswith(NARRATIVE)
+
+
 def clean_caption(cap):
-    out = []
-    for line in cap.split("\n"):
-        t = line.strip()
-        if not t:
-            out.append(line); continue
-        toks = t.split()
-        if sum(1 for x in toks if x.startswith("#") or x.startswith("@")) == len(toks):
-            continue
-        out.append(line)
-    return "\n".join(out)
+    return "\n".join(line for line in cap.split("\n") if not is_noise(line))
 
 
 def parse_recipe(text):

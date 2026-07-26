@@ -119,6 +119,17 @@ struct ReviewView: View {
         }
     }
 
+    /// True when we have no usable serving count — scaling can't compute a factor without one,
+    /// so this is worth asking about at import rather than discovering later.
+    private var yieldIsMissing: Bool {
+        RecipeYield.parse(recipeYield.isEmpty ? nil : recipeYield) == nil
+    }
+
+    /// Protein-based estimate offered as a one-tap answer when the recipe never said.
+    private var inferredServings: Int? {
+        ServingSizeInferrer.infer(from: ingredients.map { parser.parse(raw: $0.text) })
+    }
+
     private var yieldSection: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             Label("Serves", systemImage: "person.2")
@@ -130,7 +141,54 @@ struct ReviewView: View {
                 .padding(Spacing.sm)
                 .background(Color.scSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(yieldIsMissing ? Color.yellow.opacity(0.5) : Color.clear, lineWidth: 1)
+                )
+
+            if yieldIsMissing {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text("This recipe doesn't say how many it serves. Add a number so you can scale it later.")
+                        .font(.scCaption)
+                        .foregroundStyle(Color.scTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    // One-tap suggestions: the protein-based estimate first, then common sizes.
+                    HStack(spacing: Spacing.xs) {
+                        if let suggested = inferredServings {
+                            servingChip("\(suggested)", highlighted: true)
+                        }
+                        ForEach([2, 4, 6].filter { $0 != inferredServings }, id: \.self) { n in
+                            servingChip("\(n)", highlighted: false)
+                        }
+                    }
+                    if let suggested = inferredServings {
+                        Text(ServingSizeInferrer.rationale(for: suggested))
+                            .font(.scCaption)
+                            .foregroundStyle(Color.scTextSecondary.opacity(0.8))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.top, Spacing.xs)
+            }
         }
+    }
+
+    private func servingChip(_ label: String, highlighted: Bool) -> some View {
+        Button {
+            recipeYield = "\(label) servings"
+        } label: {
+            Text(highlighted ? "\(label) (suggested)" : label)
+                .font(.scCaption)
+                .padding(.horizontal, Spacing.sm)
+                .padding(.vertical, 6)
+                .background(highlighted ? Color.scAccent.opacity(0.2) : Color.scSurface)
+                .foregroundStyle(highlighted ? Color.scAccent : Color.scTextSecondary)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(
+                    highlighted ? Color.scAccent.opacity(0.5) : Color.scBorder, lineWidth: 1))
+        }
+        .accessibilityLabel("Serves \(label)")
     }
 
     private var ingredientsSection: some View {
@@ -344,7 +402,9 @@ struct ReviewView: View {
         var editedResult = extractionResult
         editedResult.title = title.isEmpty ? nil : title
         editedResult.ingredients = ingredients.map { RawIngredient(text: $0.text) }
-        editedResult.steps = steps.enumerated().map { idx, s in RawStep(order: idx + 1, text: s.text) }
+        editedResult.steps = steps.enumerated().map { idx, s in
+            RawStep(order: idx + 1, text: s.text, section: s.section)
+        }
         let report = validator.validate(result: editedResult, ingredients: parsedIngredients)
         validationReport = report
 
@@ -412,11 +472,14 @@ struct ReviewView: View {
             }
 
         // Create steps (blank rows dropped, order re-numbered from what remains).
-        recipe.steps = steps
-            .filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
-            .enumerated().map { idx, editable in
-                CookingStep(order: idx + 1, instruction: editable.text, rawText: editable.text)
-            }
+        // For a multi-component recipe (steak / flatbread / spread…), lead with the
+        // longest-cooking component so the slow part is underway while the quick parts
+        // get made — unless the margin is within a few minutes, where the author's order wins.
+        let kept = steps.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+        let sequenced = ComponentSequencer.sequence(kept.map { (text: $0.text, section: $0.section) })
+        recipe.steps = sequenced.enumerated().map { idx, step in
+            CookingStep(order: idx + 1, instruction: step.text, rawText: step.text, section: step.section)
+        }
 
         modelContext.insert(recipe)
         onSave?(recipe)
@@ -453,9 +516,13 @@ struct EditableIngredient: Identifiable {
 struct EditableStep: Identifiable {
     let id = UUID()
     var text: String
+    /// Component this step belongs to ("Steak", "Flatbread"), carried from extraction
+    /// through to the saved recipe so Cook Mode can show it as a heading.
+    var section: String?
 
     init(raw: RawStep) {
         self.text = raw.text
+        self.section = raw.section
     }
 }
 
