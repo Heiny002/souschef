@@ -111,6 +111,54 @@ final class IngredientConverterTests: XCTestCase {
         XCTAssertEqual(IngredientConverter.display(ing, mode: .original), "1 cup sugar")
     }
 
+    // MARK: Unit preference — convert only what's in the other system
+
+    private func ingredient(_ item: String, _ qty: String, _ unit: String, raw: String) -> Ingredient {
+        let ing = Ingredient(item: item, rawText: raw)
+        ing.quantity = qty
+        ing.unit = unit
+        return ing
+    }
+
+    func testImperialPreferenceConvertsMetricAmounts() {
+        let flour = ingredient("all-purpose flour", "250", "gram", raw: "250 g all-purpose flour")
+        let shown = IngredientConverter.display(flour, preference: .imperial)
+        XCTAssertTrue(shown.contains("oz"), "250 g should read in ounces, got: \(shown)")
+    }
+
+    func testImperialPreferenceLeavesImperialAmountsAsWritten() {
+        // The whole point of a preference over a blanket mode: an imperial cook reading an
+        // imperial recipe should see it exactly as written, not "1 cup" restated as ounces.
+        let flour = ingredient("all-purpose flour", "1", "cup", raw: "1 cup all-purpose flour")
+        XCTAssertEqual(IngredientConverter.display(flour, preference: .imperial),
+                       "1 cup all-purpose flour")
+    }
+
+    func testMetricPreferenceConvertsImperialAmounts() {
+        let flour = ingredient("all-purpose flour", "1", "cup", raw: "1 cup all-purpose flour")
+        let shown = IngredientConverter.display(flour, preference: .metric)
+        XCTAssertTrue(shown.contains("120g"), "1 cup flour is 120 g, got: \(shown)")
+    }
+
+    func testCountsAreNeverConverted() {
+        let eggs = ingredient("eggs", "3", "", raw: "3 eggs")
+        XCTAssertEqual(IngredientConverter.display(eggs, preference: .imperial), "3 eggs")
+        XCTAssertEqual(IngredientConverter.display(eggs, preference: .metric), "3 eggs")
+    }
+
+    func testOriginalPreferenceNeverConverts() {
+        let flour = ingredient("all-purpose flour", "250", "gram", raw: "250 g all-purpose flour")
+        XCTAssertEqual(IngredientConverter.display(flour, preference: .original),
+                       "250 g all-purpose flour")
+    }
+
+    func testPreferenceComposesWithScaling() {
+        let flour = ingredient("all-purpose flour", "250", "gram", raw: "250 g all-purpose flour")
+        let shown = IngredientConverter.display(flour, preference: .imperial, scale: 2)
+        // 500 g ≈ 17.6 oz → over a pound, so it should read in pounds.
+        XCTAssertTrue(shown.contains("lb"), "got: \(shown)")
+    }
+
     // MARK: Servings scaling (the quick-slice feature)
 
     func testScaleOriginalUnitsDoubles() {

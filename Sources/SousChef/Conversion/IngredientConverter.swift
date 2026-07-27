@@ -22,6 +22,62 @@ enum UnitMode: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - UnitPreference
+
+/// The user's standing preference for how amounts are shown, stored in @AppStorage and applied
+/// everywhere a recipe is displayed.
+///
+/// Distinct from `UnitMode`, which is a per-recipe "show me this recipe in grams right now"
+/// override. A preference converts only what actually needs converting: someone who cooks in
+/// imperial wants a European recipe's 250 g turned into ounces, but wants "1 cup flour" left
+/// exactly as written — blanket-converting everything is worse than not converting at all.
+enum UnitPreference: String, CaseIterable, Identifiable, Sendable {
+    /// Show every amount exactly as the recipe wrote it.
+    case original
+    /// Convert metric amounts to imperial; leave imperial and counts untouched.
+    case imperial
+    /// Convert imperial amounts to metric; leave metric and counts untouched.
+    case metric
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .original: return "As written"
+        case .imperial: return "Imperial"
+        case .metric:   return "Metric"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .original: return "Keep the recipe's own units"
+        case .imperial: return "Convert grams and millilitres to ounces, pounds and cups"
+        case .metric:   return "Convert ounces, pounds and cups to grams"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .original: return "doc.text"
+        case .imperial: return "scalemass.fill"
+        case .metric:   return "scalemass"
+        }
+    }
+
+    /// The measurement system this preference targets, or nil for "leave everything alone".
+    var targetSystem: MeasurementSystem? {
+        switch self {
+        case .original: return nil
+        case .imperial: return .imperial
+        case .metric:   return .metric
+        }
+    }
+
+    /// Where the choice lives. Read via @AppStorage(UnitPreference.storageKey).
+    static let storageKey = "preferredUnits"
+}
+
 // MARK: - IngredientConverter
 
 /// Converts ingredient quantities between unit systems.
@@ -63,6 +119,32 @@ enum IngredientConverter {
             return scale == 1 ? ingredient.rawText : scaledOriginal(ingredient, factor: scale)
         }
         return "\(converted) \(item)\(prepSuffix)"
+    }
+
+    /// Display an ingredient under the user's standing unit preference, scaled.
+    ///
+    /// Only amounts in the *other* system are converted. An ingredient already in the preferred
+    /// system, a countable ("2 eggs"), or one we can't convert for lack of density data is shown
+    /// as written — a wrong conversion is worse than none, and blanket-converting an imperial
+    /// recipe for an imperial cook just makes it harder to read.
+    static func display(_ ingredient: Ingredient,
+                        preference: UnitPreference,
+                        scale: Double = 1) -> String {
+        guard let target = preference.targetSystem,
+              let source = canonicalUnit((ingredient.unit ?? "").lowercased()),
+              source.system != .neutral, source.system != target else {
+            return display(ingredient, mode: .original, scale: scale)
+        }
+        // Weight converts to weight, volume to volume — never across, which would need a
+        // density guess we'd rather not make silently.
+        let mode: UnitMode
+        switch (target, source.isVolume) {
+        case (.imperial, true):  mode = .volume     // 500 ml → cups
+        case (.imperial, false): mode = .imperial   // 250 g  → oz / lbs
+        case (.metric, _):       mode = .metric     // oz/lb/cups → grams
+        case (.neutral, _):      return display(ingredient, mode: .original, scale: scale)
+        }
+        return display(ingredient, mode: mode, scale: scale)
     }
 
     /// Scale an ingredient in its original units, rendered with the scaling engine's culinary
@@ -108,6 +190,18 @@ enum IngredientConverter {
         case gram, kilogram, ounce, pound
         case milliliter, liter, teaspoon, tablespoon, cup, fluidOunce, pint, quart
         case count
+
+        /// Which system this unit belongs to. Drives the "convert only what needs converting"
+        /// rule: a cook who prefers imperial wants 250 g turned into ounces, but wants their
+        /// "1 cup flour" left exactly as the recipe wrote it.
+        var system: MeasurementSystem {
+            switch self {
+            case .gram, .kilogram, .milliliter, .liter: return .metric
+            case .ounce, .pound, .teaspoon, .tablespoon, .cup, .fluidOunce, .pint, .quart:
+                return .imperial
+            case .count: return .neutral
+            }
+        }
 
         var isWeight: Bool {
             switch self { case .gram, .kilogram, .ounce, .pound: return true; default: return false }

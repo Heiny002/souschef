@@ -377,7 +377,10 @@ struct RecipeDetailView: View {
     @Query private var allDiners: [DinerProfile]
     @State private var showCookMode = false
     @State private var showCompatibility = false
-    @State private var unitMode: UnitMode = .original
+    /// Per-recipe override, or nil to follow the Settings preference. Starts nil so a cook who
+    /// set "Imperial" once sees every recipe converted without touching the picker.
+    @State private var unitOverride: UnitMode?
+    @AppStorage(UnitPreference.storageKey) private var preferredUnits = UnitPreference.original.rawValue
     @State private var showDeleteConfirm = false
     @State private var showEdit = false
     @State private var targetServings = 0   // 0 = follow the recipe's own yield
@@ -438,11 +441,11 @@ struct RecipeDetailView: View {
                         ingredientsSectionHeader
                         if hasScalableAmounts { servingsScaler }
                         ForEach(recipe.ingredients.sorted(by: { $0.order < $1.order })) { ingredient in
-                            Text(IngredientConverter.display(ingredient, mode: unitMode, scale: scaleFactor))
+                            Text(ingredientText(ingredient))
                                 .font(.scBody)
                                 .foregroundStyle(Color.scTextPrimary)
                                 .padding(.vertical, Spacing.xs)
-                                .animation(.easeInOut(duration: 0.2), value: unitMode)
+                                .animation(.easeInOut(duration: 0.2), value: unitOverride)
                                 .animation(.easeInOut(duration: 0.2), value: effectiveServings)
                         }
                     }
@@ -550,6 +553,32 @@ struct RecipeDetailView: View {
         }
     }
 
+    // MARK: - Units
+
+    private var unitPreference: UnitPreference {
+        UnitPreference(rawValue: preferredUnits) ?? .original
+    }
+
+    /// What the picker should show: the explicit override if the cook set one, otherwise the
+    /// mode their Settings preference implies for this recipe's units.
+    private var effectiveUnitMode: UnitMode {
+        if let unitOverride { return unitOverride }
+        switch unitPreference {
+        case .original: return .original
+        case .imperial: return .imperial
+        case .metric:   return .metric
+        }
+    }
+
+    /// An ingredient row. With no override we go through the preference-aware path, which
+    /// converts only amounts in the other system and leaves the rest as written.
+    private func ingredientText(_ ingredient: Ingredient) -> String {
+        if let unitOverride {
+            return IngredientConverter.display(ingredient, mode: unitOverride, scale: scaleFactor)
+        }
+        return IngredientConverter.display(ingredient, preference: unitPreference, scale: scaleFactor)
+    }
+
     // MARK: - Servings scaling
 
     /// The recipe's own yield count (e.g. "4 servings" → 4), defaulting to 4 when the yield is
@@ -614,31 +643,31 @@ struct RecipeDetailView: View {
             Menu {
                 ForEach(UnitMode.allCases) { mode in
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { unitMode = mode }
+                        withAnimation(.easeInOut(duration: 0.2)) { unitOverride = mode }
                     } label: {
                         Label(mode.rawValue, systemImage: mode.icon)
-                        if unitMode == mode {
+                        if effectiveUnitMode == mode {
                             Image(systemName: "checkmark")
                         }
                     }
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: unitMode.icon)
+                    Image(systemName: effectiveUnitMode.icon)
                         .font(.system(size: 11))
-                    Text(unitMode.rawValue)
+                    Text(effectiveUnitMode.rawValue)
                         .font(.scCaption)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 9))
                 }
-                .foregroundStyle(unitMode == .original ? Color.scTextSecondary : Color.scAccent)
+                .foregroundStyle(effectiveUnitMode == .original ? Color.scTextSecondary : Color.scAccent)
                 .padding(.horizontal, Spacing.sm)
                 .padding(.vertical, 5)
                 .background(Color.scSurface)
                 .clipShape(Capsule())
                 .overlay(
                     Capsule().stroke(
-                        unitMode == .original ? Color.scBorder : Color.scAccent.opacity(0.5),
+                        effectiveUnitMode == .original ? Color.scBorder : Color.scAccent.opacity(0.5),
                         lineWidth: 1
                     )
                 )
