@@ -151,11 +151,26 @@ final class SocialTextFilterTests: XCTestCase {
 
     func testCleanEntryTrimsTagsAndDropsPureNoise() {
         XCTAssertEqual(SocialTextFilter.cleanEntry("Bake 20 min #dinner"), "Bake 20 min")
-        XCTAssertNil(SocialTextFilter.cleanEntry("#a #b"))
+        XCTAssertNil(SocialTextFilter.cleanEntry("#food #yum"))
         XCTAssertNil(SocialTextFilter.cleanEntry("   "))
         // A multi-line step (bulleted spice list) keeps its bullets, loses the tag.
         XCTAssertEqual(SocialTextFilter.cleanEntry("Season the steak\n• 1 tsp paprika\n#food"),
                        "Season the steak\n• 1 tsp paprika")
+    }
+
+    func testSingleCharacterTagBodiesAreDeliberatelyNotTags() {
+        // isTagToken requires a body of >= 2 characters so "#2" and a "#10 can" survive as
+        // recipe notation. "#a" falls on the same side of that line by design — it is kept,
+        // not dropped. Documented here so the rule isn't "fixed" into eating can sizes.
+        XCTAssertEqual(SocialTextFilter.cleanEntry("#a #b"), "#a #b")
+    }
+
+    func testStripTrailingTagsKeepsALeadingBullet() {
+        // The trailing trim removes a separator the tag run left dangling; trimming both ends
+        // would eat the "• " that Cook Mode renders for a step's bulleted spice list.
+        XCTAssertEqual(SocialTextFilter.stripTrailingTags("• 1 tsp paprika #food"),
+                       "• 1 tsp paprika")
+        XCTAssertEqual(SocialTextFilter.stripTrailingTags("Serve warm · #dinner"), "Serve warm")
     }
 
     // MARK: Result sanitizing (last line of defence)

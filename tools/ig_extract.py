@@ -473,7 +473,9 @@ def strip_trailing_tags(line):
     toks = line.split()
     while toks and is_tag_token(toks[-1]):
         toks.pop()
-    return " ".join(toks).strip(" \t·•-–—,;:")
+    # rstrip, not strip: a leading "• " is list formatting Cook Mode renders for a step's
+    # bulleted spice list. This only drops a separator the removed tag run left dangling.
+    return " ".join(toks).rstrip(" \t·•-–—,;:")
 
 
 def is_noise(line):

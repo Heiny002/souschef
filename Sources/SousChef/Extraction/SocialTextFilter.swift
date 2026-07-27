@@ -105,8 +105,13 @@ enum SocialTextFilter {
     static func stripTrailingTags(_ line: String) -> String {
         var tokens = line.split(whereSeparator: \.isWhitespace)
         while let last = tokens.last, isTagToken(last) { tokens.removeLast() }
-        return tokens.joined(separator: " ")
-            .trimmingCharacters(in: CharacterSet(charactersIn: " \t·•-–—,;:"))
+        var joined = tokens.joined(separator: " ")
+        // TRAILING only. Trimming both ends would eat a leading "• ", which is list formatting
+        // Cook Mode renders for a step's bulleted spice list. This exists solely to drop a
+        // separator left dangling once a tag run is removed ("Serve warm · #dinner").
+        let danglers: Set<Character> = [" ", "\t", "·", "•", "-", "–", "—", ",", ";", ":"]
+        while let last = joined.last, danglers.contains(last) { joined.removeLast() }
+        return joined
     }
 
     // MARK: - Cleaning
