@@ -8,6 +8,8 @@ struct ReviewView: View {
     @Environment(\.dismiss) private var dismiss
 
     let extractionResult: ExtractionResult
+    /// Non-nil when editing a recipe already in the library — save updates it in place.
+    let editingRecipe: Recipe?
     let onSave: ((Recipe) -> Void)?
     let onRetry: (() -> Void)?
     let screenTitle: String
@@ -38,17 +40,51 @@ struct ReviewView: View {
         onSave: ((Recipe) -> Void)? = nil,
         onRetry: (() -> Void)? = nil,
         screenTitle: String = "Review Recipe",
-        showsCancelButton: Bool = false
+        showsCancelButton: Bool = false,
+        editing: Recipe? = nil
     ) {
         self.extractionResult = result
         self.onSave = onSave
         self.onRetry = onRetry
         self.screenTitle = screenTitle
         self.showsCancelButton = showsCancelButton
+        self.editingRecipe = editing
         _title = State(initialValue: result.title ?? "")
         _recipeYield = State(initialValue: result.recipeYield ?? "")
         _ingredients = State(initialValue: result.ingredients.map { EditableIngredient(raw: $0) })
         _steps = State(initialValue: result.steps.map { EditableStep(raw: $0) })
+    }
+
+    /// Edit a recipe already in the library: the same form, but saving updates that recipe
+    /// in place instead of inserting a new one.
+    init(editing recipe: Recipe, onSave: ((Recipe) -> Void)? = nil) {
+        self.init(
+            result: Self.result(from: recipe),
+            onSave: onSave,
+            screenTitle: "Edit Recipe",
+            showsCancelButton: true,
+            editing: recipe
+        )
+    }
+
+    /// Snapshot an existing recipe back into the shape the form edits.
+    static func result(from recipe: Recipe) -> ExtractionResult {
+        var r = ExtractionResult(extractionMethod: recipe.extractionMethod)
+        r.title = recipe.title
+        r.recipeYield = recipe.recipeYield
+        r.description = recipe.recipeDescription
+        r.appliances = recipe.appliances
+        r.prepTime = recipe.prepTime
+        r.cookTime = recipe.cookTime
+        r.totalTime = recipe.totalTime
+        r.thumbnailURL = recipe.thumbnailURL
+        r.originalSourceURL = recipe.sourceURL
+        r.confidence = recipe.extractionConfidence
+        r.ingredients = recipe.ingredients.sorted { $0.order < $1.order }
+            .map { RawIngredient(text: $0.rawText, section: $0.section) }
+        r.steps = recipe.steps.sorted { $0.order < $1.order }
+            .map { RawStep(order: $0.order, text: $0.instruction, section: $0.section) }
+        return r
     }
 
     var body: some View {
@@ -65,7 +101,9 @@ struct ReviewView: View {
                         }
                         titleSection
                         yieldSection
+                        equipmentSection
                         ingredientsSection
+                        if partOrder.count > 1 { partOrderSection }
                         stepsSection
                         if let report = validationReport {
                             validationSection(report: report)
@@ -119,6 +157,17 @@ struct ReviewView: View {
         }
     }
 
+    /// True when we have no usable serving count — scaling can't compute a factor without one,
+    /// so this is worth asking about at import rather than discovering later.
+    private var yieldIsMissing: Bool {
+        RecipeYield.parse(recipeYield.isEmpty ? nil : recipeYield) == nil
+    }
+
+    /// Protein-based estimate offered as a one-tap answer when the recipe never said.
+    private var inferredServings: Int? {
+        ServingSizeInferrer.infer(from: ingredients.map { parser.parse(raw: $0.text) })
+    }
+
     private var yieldSection: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             Label("Serves", systemImage: "person.2")
@@ -130,7 +179,54 @@ struct ReviewView: View {
                 .padding(Spacing.sm)
                 .background(Color.scSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(yieldIsMissing ? Color.yellow.opacity(0.5) : Color.clear, lineWidth: 1)
+                )
+
+            if yieldIsMissing {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text("This recipe doesn't say how many it serves. Add a number so you can scale it later.")
+                        .font(.scCaption)
+                        .foregroundStyle(Color.scTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    // One-tap suggestions: the protein-based estimate first, then common sizes.
+                    HStack(spacing: Spacing.xs) {
+                        if let suggested = inferredServings {
+                            servingChip("\(suggested)", highlighted: true)
+                        }
+                        ForEach([2, 4, 6].filter { $0 != inferredServings }, id: \.self) { n in
+                            servingChip("\(n)", highlighted: false)
+                        }
+                    }
+                    if let suggested = inferredServings {
+                        Text(ServingSizeInferrer.rationale(for: suggested))
+                            .font(.scCaption)
+                            .foregroundStyle(Color.scTextSecondary.opacity(0.8))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.top, Spacing.xs)
+            }
         }
+    }
+
+    private func servingChip(_ label: String, highlighted: Bool) -> some View {
+        Button {
+            recipeYield = "\(label) servings"
+        } label: {
+            Text(highlighted ? "\(label) (suggested)" : label)
+                .font(.scCaption)
+                .padding(.horizontal, Spacing.sm)
+                .padding(.vertical, 6)
+                .background(highlighted ? Color.scAccent.opacity(0.2) : Color.scSurface)
+                .foregroundStyle(highlighted ? Color.scAccent : Color.scTextSecondary)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(
+                    highlighted ? Color.scAccent.opacity(0.5) : Color.scBorder, lineWidth: 1))
+        }
+        .accessibilityLabel("Serves \(label)")
     }
 
     private var ingredientsSection: some View {
@@ -156,6 +252,111 @@ struct ReviewView: View {
             }
             addButton("Add ingredient") {
                 ingredients.append(EditableIngredient(raw: RawIngredient(text: "")))
+            }
+        }
+    }
+
+    /// The recipe's parts in their current order (first appearance).
+    private var partOrder: [String] {
+        var seen: [String] = []
+        for step in steps {
+            guard let s = step.section, !s.isEmpty, !seen.contains(s) else { continue }
+            seen.append(s)
+        }
+        return seen
+    }
+
+    /// Move a whole part (all of its steps, in order) up or down relative to the other parts.
+    /// The suggested order leads with the longest part, but the cook knows their kitchen —
+    /// this lets them override it before saving.
+    private func movePart(_ part: String, by offset: Int) {
+        var order = partOrder
+        guard let idx = order.firstIndex(of: part) else { return }
+        let target = idx + offset
+        guard order.indices.contains(target) else { return }
+        order.swapAt(idx, target)
+
+        // Rebuild the step list part-by-part in the new order; unsectioned steps stay in
+        // front (they're shared prep like "preheat the oven").
+        let unsectioned = steps.filter { ($0.section ?? "").isEmpty }
+        var rebuilt = unsectioned
+        for name in order {
+            rebuilt.append(contentsOf: steps.filter { $0.section == name })
+        }
+        withAnimation(.easeInOut(duration: 0.2)) { steps = rebuilt }
+    }
+
+    /// Reorderable list of the recipe's parts, shown above the steps when there's more than one.
+    private var partOrderSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Label("Order of parts", systemImage: "arrow.up.arrow.down")
+                .font(.scLabel)
+                .foregroundStyle(Color.scAccent)
+            Text("Suggested longest-first so slow parts start early. Rearrange if you'd rather cook in another order.")
+                .font(.scCaption)
+                .foregroundStyle(Color.scTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(Array(partOrder.enumerated()), id: \.element) { idx, part in
+                HStack(spacing: Spacing.sm) {
+                    Text("\(idx + 1)")
+                        .font(.scLabel)
+                        .foregroundStyle(Color.scAccent)
+                        .frame(width: 20, alignment: .leading)
+                    Text(part)
+                        .font(.scBody)
+                        .foregroundStyle(Color.scTextPrimary)
+                    Spacer()
+                    Button { movePart(part, by: -1) } label: {
+                        Image(systemName: "chevron.up")
+                            .frame(width: 32, height: 32)
+                    }
+                    .disabled(idx == 0)
+                    .foregroundStyle(idx == 0 ? Color.scTextSecondary.opacity(0.3) : Color.scAccent)
+                    .accessibilityLabel("Move \(part) earlier")
+
+                    Button { movePart(part, by: 1) } label: {
+                        Image(systemName: "chevron.down")
+                            .frame(width: 32, height: 32)
+                    }
+                    .disabled(idx == partOrder.count - 1)
+                    .foregroundStyle(idx == partOrder.count - 1
+                                     ? Color.scTextSecondary.opacity(0.3) : Color.scAccent)
+                    .accessibilityLabel("Move \(part) later")
+                }
+                .padding(.horizontal, Spacing.sm)
+                .padding(.vertical, 4)
+                .background(Color.scSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    /// Special equipment callout — an air fryer or pressure cooker decides whether the cook
+    /// can make this at all, so it belongs at review time, not buried on the detail screen.
+    @ViewBuilder
+    private var equipmentSection: some View {
+        let equipment = extractionResult.equipment.isEmpty
+            ? ApplianceDetector.detectSpecialEquipment(
+                in: ingredients.map(\.text) + steps.map(\.text))
+            : extractionResult.equipment
+        if !equipment.isEmpty {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Label("You'll need", systemImage: "wrench.and.screwdriver")
+                    .font(.scLabel)
+                    .foregroundStyle(Color.scAccent)
+                FlowLayout(spacing: Spacing.xs) {
+                    ForEach(equipment, id: \.self) { item in
+                        Text(item.capitalized)
+                            .font(.scCaption)
+                            .padding(.horizontal, Spacing.sm)
+                            .padding(.vertical, 6)
+                            .background(Color.scSurface)
+                            .foregroundStyle(Color.scTextPrimary)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.scBorder, lineWidth: 1))
+                    }
+                }
             }
         }
     }
@@ -344,7 +545,9 @@ struct ReviewView: View {
         var editedResult = extractionResult
         editedResult.title = title.isEmpty ? nil : title
         editedResult.ingredients = ingredients.map { RawIngredient(text: $0.text) }
-        editedResult.steps = steps.enumerated().map { idx, s in RawStep(order: idx + 1, text: s.text) }
+        editedResult.steps = steps.enumerated().map { idx, s in
+            RawStep(order: idx + 1, text: s.text, section: s.section)
+        }
         let report = validator.validate(result: editedResult, ingredients: parsedIngredients)
         validationReport = report
 
@@ -381,17 +584,32 @@ struct ReviewView: View {
         let storedURL = extractionResult.recipePageURL ?? extractionResult.originalSourceURL
         let platformURL = extractionResult.originalSourceURL ?? extractionResult.recipePageURL
 
-        let recipe = Recipe(
-            title: title.trimmingCharacters(in: .whitespaces),
-            sourceURL: storedURL,
-            sourceType: resolvedSourceType(platformURL: platformURL),
-            extractionConfidence: extractionResult.confidence,
-            extractionMethod: extractionResult.extractionMethod
-        )
-        recipe.thumbnailURL = extractionResult.thumbnailURL
+        // Editing an existing library recipe updates it in place (keeping its id, provenance
+        // and date added); a fresh import creates a new one.
+        let recipe: Recipe
+        if let editingRecipe {
+            recipe = editingRecipe
+            recipe.title = title.trimmingCharacters(in: .whitespaces)
+        } else {
+            recipe = Recipe(
+                title: title.trimmingCharacters(in: .whitespaces),
+                sourceURL: storedURL,
+                sourceType: resolvedSourceType(platformURL: platformURL),
+                extractionConfidence: extractionResult.confidence,
+                extractionMethod: extractionResult.extractionMethod
+            )
+            recipe.thumbnailURL = extractionResult.thumbnailURL
+        }
         recipe.recipeYield = recipeYield.isEmpty ? nil : recipeYield
         recipe.recipeDescription = extractionResult.description
-        recipe.appliances = extractionResult.appliances
+        // Appliances: keep the full detected list, but make sure the special equipment the
+        // review screen showed is present even when it came from the LLM rather than detection.
+        var appliances = extractionResult.appliances
+        for item in extractionResult.equipment
+        where !appliances.contains(where: { $0.caseInsensitiveCompare(item) == .orderedSame }) {
+            appliances.append(item)
+        }
+        recipe.appliances = appliances
         recipe.prepTime = extractionResult.prepTime
         recipe.cookTime = extractionResult.cookTime
         recipe.totalTime = extractionResult.totalTime
@@ -412,13 +630,18 @@ struct ReviewView: View {
             }
 
         // Create steps (blank rows dropped, order re-numbered from what remains).
-        recipe.steps = steps
-            .filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
-            .enumerated().map { idx, editable in
-                CookingStep(order: idx + 1, instruction: editable.text, rawText: editable.text)
-            }
+        // For a multi-component recipe (steak / flatbread / spread…), lead with the
+        // longest-cooking component so the slow part is underway while the quick parts
+        // get made — unless the margin is within a few minutes, where the author's order wins.
+        // Save the order shown on screen verbatim. Component sequencing already ran when the
+        // extraction was built, and the review screen lets the cook rearrange the parts — so
+        // re-sequencing here would silently undo their choice.
+        let kept = steps.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+        recipe.steps = kept.enumerated().map { idx, step in
+            CookingStep(order: idx + 1, instruction: step.text, rawText: step.text, section: step.section)
+        }
 
-        modelContext.insert(recipe)
+        if editingRecipe == nil { modelContext.insert(recipe) }
         onSave?(recipe)
         dismiss()
     }
@@ -453,9 +676,13 @@ struct EditableIngredient: Identifiable {
 struct EditableStep: Identifiable {
     let id = UUID()
     var text: String
+    /// Component this step belongs to ("Steak", "Flatbread"), carried from extraction
+    /// through to the saved recipe so Cook Mode can show it as a heading.
+    var section: String?
 
     init(raw: RawStep) {
         self.text = raw.text
+        self.section = raw.section
     }
 }
 

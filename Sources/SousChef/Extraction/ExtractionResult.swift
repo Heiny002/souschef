@@ -10,6 +10,9 @@ struct ExtractionResult: Sendable {
     var ingredients: [RawIngredient]
     var steps: [RawStep]
     var appliances: [String]
+    /// Special equipment the cook might not own (air fryer, sous vide, pressure cooker) —
+    /// the subset of `appliances` worth flagging before they start.
+    var equipment: [String] = []
     var description: String?
     var confidence: Double  // 0.0 – 1.0
     var extractionMethod: String
@@ -44,6 +47,9 @@ struct RawIngredient: Sendable {
 struct RawStep: Sendable {
     var order: Int
     var text: String
+    /// Component of a multi-part recipe this step belongs to ("Flatbread", "Steak") —
+    /// set by the LLM structurer; nil for single-component recipes.
+    var section: String?
 }
 
 /// Confidence thresholds for the extraction chain.

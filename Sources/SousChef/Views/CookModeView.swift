@@ -26,8 +26,40 @@ struct CookModeView: View {
     private struct MicroStep {
         let instruction: String
         let detectedTimer: DetectedTimer?
+        /// Component heading ("Flatbread", "Steak") for multi-part recipes; nil otherwise.
+        let section: String?
     }
     @State private var microSteps: [MicroStep] = []
+    @State private var showInstructions = false
+    /// Where the cook left off in each part, so switching away and back resumes rather than
+    /// restarting — the whole point of the tabs: start the flatbread, jump to the steak while
+    /// it bakes, come back to exactly where the flatbread was.
+    @State private var lastIndexPerPart: [String: Int] = [:]
+
+    /// The recipe's parts in their cooking order (first appearance), for the tab row.
+    private var parts: [String] {
+        var seen: [String] = []
+        for step in microSteps {
+            guard let s = step.section, !s.isEmpty, !seen.contains(s) else { continue }
+            seen.append(s)
+        }
+        return seen
+    }
+
+    /// Jump to a part, resuming where the cook left off in it.
+    private func jumpToPart(_ part: String) {
+        let target = lastIndexPerPart[part]
+            ?? microSteps.firstIndex { $0.section == part }
+        if let target { jump(to: target) }
+    }
+
+    /// True when this step begins a new component — the heading only shows at the boundary,
+    /// so it reads as a chapter title rather than repeating on every step.
+    private func startsSection(at index: Int) -> Bool {
+        guard let section = microSteps[safe: index]?.section, !section.isEmpty else { return false }
+        guard index > 0 else { return true }
+        return microSteps[safe: index - 1]?.section != section
+    }
 
     private var current: MicroStep? {
         guard !microSteps.isEmpty, microSteps.indices.contains(currentIndex) else { return nil }
@@ -70,6 +102,12 @@ struct CookModeView: View {
             // truth immediately instead of waiting for the next ticker fire.
             if phase == .active { timers.reconcile() }
         }
+        .onChange(of: currentIndex) { _, idx in
+            // Remember where we are in this part so returning to it resumes here.
+            if let part = microSteps[safe: idx]?.section, !part.isEmpty {
+                lastIndexPerPart[part] = idx
+            }
+        }
         .onChange(of: timers.justCompleted) { _, done in
             // Speak the guidance so a cook with messy hands hears what to do next.
             if let done, voiceEnabled {
@@ -78,6 +116,9 @@ struct CookModeView: View {
         }
         .sheet(isPresented: $showIngredients) {
             ingredientsSheet
+        }
+        .sheet(isPresented: $showInstructions) {
+            instructionsSheet
         }
         .sheet(isPresented: Binding(
             get: { selectedTimerID != nil },
@@ -103,20 +144,51 @@ struct CookModeView: View {
 
     private func buildMicroSteps() {
         let sorted = recipe.steps.sorted { $0.order < $1.order }
-        let rawInstructions = sorted.flatMap { MicroStepSplitter.split($0.instruction) }
+
+        // Split into micro-steps, keeping each piece tied to its component so the heading
+        // survives the split. A step carrying a bulleted list (spice blends) is left whole —
+        // splitting it would strip the list off its sentence.
+        var pieces: [(text: String, section: String?)] = []
+        for step in sorted {
+            let parts = step.instruction.contains("\n• ")
+                ? [step.instruction]
+                : MicroStepSplitter.split(step.instruction)
+            pieces.append(contentsOf: parts.map { (text: $0, section: step.section) })
+        }
 
         // Reorder so an oven preheat overlaps hands-off downtime (marinate/chill/rest).
-        let sequenced = StepSequencer.reorder(rawInstructions)
+        // Sequencing is done per component, so a preheat never jumps across a component
+        // boundary and land under the wrong heading.
+        var sequencedPieces: [(text: String, section: String?)] = []
+        for group in groupedByRun(pieces) {
+            let reordered = StepSequencer.reorder(group.map(\.text))
+            sequencedPieces.append(contentsOf: reordered.map { (text: $0, section: group.first?.section ?? nil) })
+        }
 
         // Annotate first-mention ingredients with their measurements (in final cook order)
-        let annotated = IngredientAnnotator.annotate(sequenced, with: recipe.ingredients)
+        let annotated = IngredientAnnotator.annotate(sequencedPieces.map(\.text), with: recipe.ingredients)
 
-        microSteps = annotated.map { instruction in
+        microSteps = annotated.enumerated().map { idx, instruction in
             MicroStep(
                 instruction: instruction,
-                detectedTimer: TimerDetector.detect(in: instruction)
+                detectedTimer: TimerDetector.detect(in: instruction),
+                section: sequencedPieces[safe: idx]?.section
             )
         }
+    }
+
+    /// Split a step list into consecutive runs that share the same component.
+    private func groupedByRun(_ pieces: [(text: String, section: String?)]) -> [[(text: String, section: String?)]] {
+        var runs: [[(text: String, section: String?)]] = []
+        for piece in pieces {
+            if var last = runs.last, last.first?.section == piece.section {
+                last.append(piece)
+                runs[runs.count - 1] = last
+            } else {
+                runs.append([piece])
+            }
+        }
+        return runs
     }
 
     // MARK: - Navigation
@@ -264,6 +336,13 @@ struct CookModeView: View {
                     .padding(.horizontal, Spacing.md)
                     .padding(.top, geo.safeAreaInsets.top + Spacing.sm)
 
+                // Part tabs for a multi-component recipe — jump between the steak, the
+                // flatbread and the spread, each resuming where you left off.
+                if parts.count > 1 {
+                    partTabs
+                        .padding(.top, Spacing.sm)
+                }
+
                 // Minimal timer chips — one per active timer, tap to see its step.
                 if timers.hasTimers {
                     timerChips
@@ -272,11 +351,13 @@ struct CookModeView: View {
 
                 Spacer()
 
-                // Step counter dots
-                stepDots
-                    .padding(.horizontal, Spacing.md)
-
-                Spacer(minLength: Spacing.lg)
+                // Component heading — only when there are no tabs (a single named part);
+                // with tabs the highlighted pill already says which part you're on.
+                if parts.count == 1, let section = current?.section, !section.isEmpty {
+                    sectionHeading(section)
+                        .padding(.horizontal, Spacing.lg)
+                        .padding(.bottom, Spacing.sm)
+                }
 
                 // Main step text
                 if let step = current {
@@ -285,7 +366,7 @@ struct CookModeView: View {
                         .gesture(swipeGesture)
                 }
 
-                Spacer(minLength: Spacing.xl)
+                Spacer(minLength: Spacing.lg)
 
                 // "Start Timer" prompt — only while this step doesn't have its own timer
                 // yet. Other steps' timers keep running in the chip row (stackable).
@@ -293,6 +374,11 @@ struct CookModeView: View {
                     timerPrompt(t)
                         .padding(.horizontal, Spacing.md)
                 }
+
+                // Progress bar sits directly above the buttons, outside the flexible region,
+                // so it stays put instead of drifting with the height of the step text.
+                stepDots
+                    .padding(.horizontal, Spacing.md)
 
                 // Navigation buttons
                 navButtons
@@ -340,8 +426,64 @@ struct CookModeView: View {
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel("View Ingredients")
+
+                Button { showInstructions = true } label: {
+                    Image(systemName: "text.book.closed")
+                        .foregroundStyle(Color.scTextSecondary)
+                        .font(.system(size: 18, weight: .medium))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("View all instructions")
             }
         }
+    }
+
+    // MARK: - Part tabs
+
+    /// One pill per component, in cooking order. The active part is filled; a part with a
+    /// running timer shows a dot so you can see at a glance that something's cooking there.
+    private var partTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Spacing.xs) {
+                ForEach(parts, id: \.self) { part in
+                    partPill(part)
+                }
+            }
+            .padding(.horizontal, Spacing.md)
+        }
+    }
+
+    private func partPill(_ part: String) -> some View {
+        let isActive = current?.section == part
+        let hasRunningTimer = timers.runningTimers.contains {
+            microSteps[safe: $0.stepIndex]?.section == part
+        }
+        return Button {
+            jumpToPart(part)
+        } label: {
+            HStack(spacing: 5) {
+                if hasRunningTimer {
+                    Circle()
+                        .fill(isActive ? Color.scBackground : Color.scAccent)
+                        .frame(width: 6, height: 6)
+                }
+                Text(part)
+                    .font(.scCaption)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, 7)
+            .background(isActive ? Color.scAccent : Color.scSurface)
+            .foregroundStyle(isActive ? Color.scBackground : Color.scTextSecondary)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(
+                isActive ? Color.clear : Color.scBorder, lineWidth: 1))
+        }
+        .animation(.easeInOut(duration: 0.2), value: isActive)
+        .accessibilityLabel(part)
+        .accessibilityHint(isActive ? "Current part" : "Switch to \(part)")
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
     }
 
     // MARK: - Timer chips
@@ -414,14 +556,33 @@ struct CookModeView: View {
         .accessibilityLabel("Step \(currentIndex + 1) of \(microSteps.count)")
     }
 
+    // MARK: - Section heading
+
+    /// Which component of a multi-part recipe this step belongs to.
+    private func sectionHeading(_ name: String) -> some View {
+        Text(name.uppercased())
+            .font(.scLabel)
+            .tracking(1.5)
+            .foregroundStyle(Color.scAccent)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .id("section-\(currentIndex)")
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.25), value: currentIndex)
+            .accessibilityLabel("Section: \(name)")
+    }
+
     // MARK: - Step text
 
     private func stepText(_ instruction: String) -> some View {
-        Text(instruction)
-            .font(.custom("Lora-Regular", size: 26, relativeTo: .title))
+        // A step carrying a bulleted list (spice blends, multi-item additions) reads as a
+        // list, so it left-aligns; a plain sentence stays centered.
+        let hasBullets = instruction.contains("\n• ")
+        return Text(instruction)
+            .font(.custom("Lora-Regular", size: hasBullets ? 22 : 26, relativeTo: .title))
             .foregroundStyle(Color.scTextPrimary)
             .lineSpacing(6)
-            .multilineTextAlignment(.center)
+            .multilineTextAlignment(hasBullets ? .leading : .center)
+            .frame(maxWidth: .infinity, alignment: hasBullets ? .leading : .center)
             .minimumScaleFactor(0.75)
             .id(currentIndex)
             .transition(.asymmetric(
@@ -787,6 +948,64 @@ struct CookModeView: View {
         .presentationDetents([.medium, .large])
     }
 
+    // MARK: - Instructions sheet (review every step, jump to any)
+
+    private var instructionsSheet: some View {
+        NavigationStack {
+            ZStack {
+                Color.scBackground.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Spacing.sm) {
+                        ForEach(Array(microSteps.enumerated()), id: \.offset) { idx, step in
+                            // Component heading at each boundary, mirroring the cook screen.
+                            if startsSection(at: idx), let section = step.section {
+                                Text(section.uppercased())
+                                    .font(.scLabel)
+                                    .tracking(1.5)
+                                    .foregroundStyle(Color.scAccent)
+                                    .padding(.top, idx == 0 ? 0 : Spacing.md)
+                            }
+                            Button {
+                                showInstructions = false
+                                jump(to: idx)
+                            } label: {
+                                HStack(alignment: .top, spacing: Spacing.md) {
+                                    Text("\(idx + 1)")
+                                        .font(.scLabel)
+                                        .foregroundStyle(idx == currentIndex ? Color.scBackground : Color.scAccent)
+                                        .frame(width: 26, height: 26)
+                                        .background(idx == currentIndex ? Color.scAccent : Color.clear)
+                                        .clipShape(Circle())
+                                    Text(step.instruction)
+                                        .font(.scBody)
+                                        .foregroundStyle(idx == currentIndex ? Color.scTextPrimary : Color.scTextSecondary)
+                                        .multilineTextAlignment(.leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .padding(Spacing.md)
+                                .background(idx == currentIndex ? Color.scSurface : Color.clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .accessibilityHint("Go to step \(idx + 1)")
+                        }
+                    }
+                    .padding(Spacing.md)
+                }
+            }
+            .navigationTitle("Instructions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.scBackground, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showInstructions = false }
+                        .foregroundStyle(Color.scAccent)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
     // MARK: - Empty state
 
     private var emptyState: some View {
@@ -800,6 +1019,16 @@ struct CookModeView: View {
             Button("Go Back") { dismiss() }
                 .foregroundStyle(Color.scAccent)
         }
+    }
+}
+
+// MARK: - Collection safety
+
+extension Collection {
+    /// Bounds-checked access — returns nil instead of trapping when the index is out of range.
+    /// Cook Mode indexes parallel arrays (steps, sections) that a reorder can shift.
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
 

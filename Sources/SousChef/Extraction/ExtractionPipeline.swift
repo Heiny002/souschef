@@ -51,7 +51,10 @@ actor ExtractionPipeline {
         // Step 1: oEmbed for caption / title (free, no auth)
         let metadata = try? await metadataFetcher.fetch(videoURL: urlString)
         var captionText = metadata?.caption ?? ""
-        let titleHint = metadata?.title
+        // Instagram/TikTok page titles are engagement metadata ("69K likes, 410 comments -
+        // creator on July 3: …"), never recipe names. Drop them so they can't become the
+        // recipe's title further down when the extractors don't find a real one.
+        let titleHint = SocialTextFilter.cleanTitle(metadata?.title)
         debugTrace.append("metadata caption: \(captionText.isEmpty ? "—" : "\(captionText.count) chars")")
 
         // Step 1b: Instagram fallbacks when the logged-out URLSession routes came back empty.
@@ -82,6 +85,10 @@ actor ExtractionPipeline {
         // Captions from Instagram/TikTok arrive HTML-encoded — decode so bullets, dashes,
         // and ampersands don't show as &#x2022; / &#x2013; / &amp; downstream.
         captionText = captionText.decodedHTMLEntities
+        // Several routes hand back og:description as the caption, which Instagram prefixes
+        // with "69K likes, 417 comments - user on July 3: …". Without stripping it the
+        // preamble becomes the caption's first line and then the recipe's title.
+        captionText = SocialTextFilter.stripEngagementPrefix(captionText)
 
         // Step 2: Try transcript endpoint (may be unavailable / server down)
         var videoTranscript: VideoTranscript?
@@ -193,6 +200,17 @@ actor ExtractionPipeline {
                 debugTrace.append("LLM structurer: \(llm.ingredients.count) ingredients, \(llm.steps.count) steps")
             } else {
                 debugTrace.append("LLM structurer: kept deterministic parse")
+            }
+        }
+
+        // Multi-part recipes: lead with the longest-running component so the slow part is
+        // underway while the quick parts get made. Done here, before review, so the cook sees
+        // (and can rearrange) the suggested order on the review screen.
+        if result.steps.contains(where: { !($0.section ?? "").isEmpty }) {
+            let sequenced = ComponentSequencer.sequence(
+                result.steps.map { (text: $0.text, section: $0.section) })
+            result.steps = sequenced.enumerated().map { idx, step in
+                RawStep(order: idx + 1, text: step.text, section: step.section)
             }
         }
 
@@ -376,17 +394,11 @@ actor ExtractionPipeline {
         (r.isViable ? 1000 : 0) + r.ingredients.count * 10 + r.steps.count * 5 + (r.title != nil ? 1 : 0)
     }
 
-    /// Drop lines that are nothing but hashtags/mentions before structured parsing —
-    /// Instagram/TikTok captions end in walls of them, and otherwise they'd become fake
-    /// ingredients or steps. Blank lines are kept so paragraph structure survives.
+    /// Drop social noise (hashtag walls, "Save this for later", marketing narrative) before
+    /// structured parsing — otherwise it becomes fake ingredients and steps. Blank lines are
+    /// kept so paragraph structure, and therefore header detection, survives.
     static func cleanCaptionForParsing(_ caption: String) -> String {
-        caption.components(separatedBy: .newlines).filter { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { return true }
-            let tokens = trimmed.split(separator: " ")
-            let tagLike = tokens.filter { $0.hasPrefix("#") || $0.hasPrefix("@") }.count
-            return tagLike != tokens.count
-        }.joined(separator: "\n")
+        SocialTextFilter.clean(caption)
     }
 
     // MARK: - Web Extraction Chain

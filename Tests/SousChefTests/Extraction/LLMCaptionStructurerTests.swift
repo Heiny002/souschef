@@ -90,6 +90,43 @@ final class LLMCaptionStructurerTests: XCTestCase {
         XCTAssertNil(LLMCaptionStructurer.recipe(fromModelText: "sorry, I can't help with that"))
     }
 
+    func testStepSectionsAndBulletedItems() {
+        // Multi-component recipe: each step carries its component, and a spice blend comes
+        // back as an "items" list rendered as bullets rather than inline parentheses.
+        let json = """
+        {
+          "title": "Steak Wraps",
+          "ingredients": [{"text": "1 lb flank steak", "section": "Steak"}],
+          "steps": [
+            {"text": "Season the steak with olive oil and spices, then mix well.",
+             "section": "Steak",
+             "items": ["olive oil (1 tsp)", "paprika (1/2 tbsp)", "garlic powder (1/2 tbsp)"]},
+            {"text": "Bake the flatbreads for 18-20 minutes.", "section": "Flatbread", "items": null}
+          ]
+        }
+        """
+        let r = LLMCaptionStructurer.recipe(fromModelText: json)
+        XCTAssertEqual(r?.steps.count, 2)
+        XCTAssertEqual(r?.steps.first?.section, "Steak")
+        XCTAssertEqual(r?.steps.last?.section, "Flatbread")
+
+        let first = r?.steps.first?.text ?? ""
+        XCTAssertTrue(first.hasPrefix("Season the steak"), "sentence stays intact")
+        XCTAssertTrue(first.contains("\n• olive oil (1 tsp)"), "items become bullets")
+        XCTAssertTrue(first.contains("\n• paprika (1/2 tbsp)"))
+        XCTAssertEqual(r?.steps.last?.text, "Bake the flatbreads for 18-20 minutes.",
+                       "null items adds no bullets")
+    }
+
+    func testPlainStringStepsStillParse() {
+        // Older/simplified shape must keep working — steps as bare strings, no section.
+        let json = #"{"title": "Toast", "ingredients": [{"text": "bread"}], "steps": ["Toast it."]}"#
+        let r = LLMCaptionStructurer.recipe(fromModelText: json)
+        XCTAssertEqual(r?.steps.count, 1)
+        XCTAssertEqual(r?.steps.first?.text, "Toast it.")
+        XCTAssertNil(r?.steps.first?.section)
+    }
+
     func testStepOrderingIsSequential() {
         let json = #"{"title": "X", "ingredients": [{"text": "a"}], "steps": ["one", "two", "three"]}"#
         let r = LLMCaptionStructurer.recipe(fromModelText: json)

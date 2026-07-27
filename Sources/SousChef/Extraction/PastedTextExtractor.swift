@@ -204,6 +204,10 @@ struct PastedTextExtractor {
     private static func normalizeHeader(_ line: String) -> String {
         var s = line.trimmingCharacters(in: .whitespaces)
         s = regexReplaceFirst(s, pattern: "^[#>*_`\\s]+", with: "")
+        // Social captions decorate headers with emoji ("🤍🍑 Ingredients for 2 sides"). Without
+        // stripping them the header goes unrecognized and the whole caption falls through to
+        // headerless parsing, turning marketing prose into ingredients (real Instagram bug).
+        s = s.drop { !$0.isLetter && !$0.isNumber }.description
         s = regexReplaceFirst(s, pattern: "[#*_`:：\\s]+$", with: "")
         s = regexReplaceFirst(s, pattern: "^\\d+[.)]\\s*", with: "")
         return s.trimmingCharacters(in: .whitespaces).lowercased()

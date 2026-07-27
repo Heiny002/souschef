@@ -2,6 +2,17 @@ import AVFoundation
 import Speech
 import Foundation
 
+/// The properties voice ranking needs. `AVSpeechSynthesisVoice` already provides all three;
+/// the protocol exists so tests can stand in fakes with a chosen quality, which the real
+/// type does not allow (its voices come only from the system, quality read-only).
+protocol RankableVoice {
+    var language: String { get }
+    var quality: AVSpeechSynthesisVoiceQuality { get }
+    var identifier: String { get }
+}
+
+extension AVSpeechSynthesisVoice: RankableVoice {}
+
 /// Cook Mode voice layer.
 /// TTS (AVSpeechSynthesizer) reads steps aloud.
 /// SFSpeechRecognizer listens for voice commands between TTS utterances.
@@ -67,6 +78,72 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
         await AVAudioApplication.requestRecordPermission()
     }
 
+    // MARK: - Voice selection
+
+    /// The best-sounding installed voice, resolved once — enumerating voices on every
+    /// utterance would be wasted work in a screen that speaks constantly.
+    ///
+    /// Apple ships only the compact `.default` voices; the far more natural `.enhanced` and
+    /// `.premium` ones are user downloads (Settings → Accessibility → Spoken Content → Voices)
+    /// that an app cannot install on the user's behalf. So this is a preference ladder, not a
+    /// fixed choice: hardcoding `.premium` would sound WORSE for most people, because on a
+    /// phone without that download it resolves to nothing and falls back to the robotic
+    /// default. Picking the best *installed* voice degrades gracefully instead.
+    static let bestAvailableVoice: AVSpeechSynthesisVoice? = selectVoice(
+        from: AVSpeechSynthesisVoice.speechVoices(),
+        preferredLanguage: AVSpeechSynthesisVoice.currentLanguageCode()
+    )
+
+    /// Rank installed voices: premium > enhanced > default, preferring the user's own
+    /// language, then any English voice. Generic over `RankableVoice` because
+    /// `AVSpeechSynthesisVoice` can't be constructed with a chosen quality, so the ladder
+    /// would otherwise be untestable without a device that happens to have the right
+    /// voices downloaded.
+    nonisolated static func selectVoice<V: RankableVoice>(from voices: [V],
+                                                          preferredLanguage: String) -> V? {
+        func rank(_ quality: AVSpeechSynthesisVoiceQuality) -> Int {
+            switch quality {
+            case .premium:  return 3
+            case .enhanced: return 2
+            default:        return 1
+            }
+        }
+        // Language preference: exact match beats same base language ("en-GB" for an "en-US"
+        // device) beats any English, so a user never gets a voice in a language they can't
+        // follow just because it scored higher on quality.
+        let preferredBase = preferredLanguage.prefix(2).lowercased()
+        func languageScore(_ voice: V) -> Int {
+            if voice.language.caseInsensitiveCompare(preferredLanguage) == .orderedSame { return 3 }
+            if voice.language.prefix(2).lowercased() == preferredBase { return 2 }
+            if voice.language.hasPrefix("en") { return 1 }
+            return 0
+        }
+
+        return voices
+            .filter { languageScore($0) > 0 }
+            .max { a, b in
+                let (la, lb) = (languageScore(a), languageScore(b))
+                if la != lb { return la < lb }
+                let (qa, qb) = (rank(a.quality), rank(b.quality))
+                if qa != qb { return qa < qb }
+                // Stable tie-break so the chosen voice doesn't change between launches.
+                return a.identifier > b.identifier
+            }
+    }
+
+    /// Which voice was chosen and at what quality — surfaced for on-device verification,
+    /// since voice quality can't be judged from a build log.
+    static var voiceDescription: String {
+        guard let voice = bestAvailableVoice else { return "system default" }
+        let quality: String
+        switch voice.quality {
+        case .premium:  quality = "premium"
+        case .enhanced: quality = "enhanced"
+        default:        quality = "default"
+        }
+        return "\(voice.name) (\(voice.language), \(quality))"
+    }
+
     // MARK: - TTS
 
     /// Read a step aloud. Stops any ongoing recognition first.
@@ -76,7 +153,7 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
         setAudioSessionForPlayback()
 
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.voice = Self.bestAvailableVoice
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.92
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
