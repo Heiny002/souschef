@@ -112,7 +112,7 @@ final class CookVoiceController: NSObject, ObservableObject, @unchecked Sendable
         // device) beats any English, so a user never gets a voice in a language they can't
         // follow just because it scored higher on quality.
         let preferredBase = preferredLanguage.prefix(2).lowercased()
-        func languageScore(_ voice: AVSpeechSynthesisVoice) -> Int {
+        func languageScore(_ voice: V) -> Int {
             if voice.language.caseInsensitiveCompare(preferredLanguage) == .orderedSame { return 3 }
             if voice.language.prefix(2).lowercased() == preferredBase { return 2 }
             if voice.language.hasPrefix("en") { return 1 }
