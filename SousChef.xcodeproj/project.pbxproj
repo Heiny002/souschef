@@ -34,6 +34,7 @@
 		FEED0000000000000000EA01 /* IngredientConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EA02 /* IngredientConverterTests.swift */; };
 		FEED0000000000000000EB01 /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EB02 /* PersistenceTests.swift */; };
 		FEED0000000000000000AB01 /* CookTimerStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000AB02 /* CookTimerStateTests.swift */; };
+		FEED0000000000000000BD11 /* VoiceSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000BD12 /* VoiceSelectionTests.swift */; };
 		217A8C3E81B3A1B165CBAEB2 /* CaptionAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 124A4D2FF0344B802F56263E /* CaptionAnalyzer.swift */; };
 		21A36AEB84A1CF6CF499FD33 /* VideoMetadataFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6927B3D6996D01FA9163A5 /* VideoMetadataFetcher.swift */; };
 		22C4C03883DB86E008BEF963 /* ISO8601DurationParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBD4C75A2449648C9F438129 /* ISO8601DurationParser.swift */; };
@@ -186,6 +187,7 @@
 		FEED0000000000000000EA02 /* IngredientConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngredientConverterTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000EB02 /* PersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000AB02 /* CookTimerStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookTimerStateTests.swift; sourceTree = "<group>"; };
+		FEED0000000000000000BD12 /* VoiceSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSelectionTests.swift; sourceTree = "<group>"; };
 		A84D65E08565F7B6F18BB383 /* RecipeValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeValidator.swift; sourceTree = "<group>"; };
 		AB6927B3D6996D01FA9163A5 /* VideoMetadataFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoMetadataFetcher.swift; sourceTree = "<group>"; };
 		BBD4C75A2449648C9F438129 /* ISO8601DurationParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ISO8601DurationParser.swift; sourceTree = "<group>"; };
@@ -270,6 +272,7 @@
 			isa = PBXGroup;
 			children = (
 				FEED0000000000000000AB02 /* CookTimerStateTests.swift */,
+				FEED0000000000000000BD12 /* VoiceSelectionTests.swift */,
 			);
 			path = CookMode;
 			sourceTree = "<group>";
@@ -687,6 +690,7 @@
 				FEED0000000000000000FF01 /* ProvenanceTests.swift in Sources */,
 				FEED0000000000000000CD01 /* ParserFixesTests.swift in Sources */,
 				FEED0000000000000000AB01 /* CookTimerStateTests.swift in Sources */,
+				FEED0000000000000000BD11 /* VoiceSelectionTests.swift in Sources */,
 				FEED0000000000000000CF03 /* PastedTextExtractorTests.swift in Sources */,
 				FEED0000000000000000CF0B /* InstagramExtractionTests.swift in Sources */,
 				FEED0000000000000000CB01 /* LLMCaptionStructurerTests.swift in Sources */,
