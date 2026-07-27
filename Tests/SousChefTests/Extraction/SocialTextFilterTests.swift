@@ -199,7 +199,9 @@ final class SocialTextFilterTests: XCTestCase {
     func testTranscriptValidatorFiltersHashtagsFromModelJSON() {
         // This path wrote model JSON straight into the recipe with no filtering at all.
         let partial = ExtractionResult(extractionMethod: "test")
-        let json = #"{"title": "Toast", "ingredients": ["2 peaches"], "steps": ["Bake it.", "#easyrecipes #dinner"]}"#
+        // Doubled delimiters: the payload contains `"#`, which would close a single-# raw
+        // string early and leave the remainder to be parsed as code.
+        let json = ##"{"title": "Toast", "ingredients": ["2 peaches"], "steps": ["Bake it.", "#easyrecipes #dinner"]}"##
         let r = TranscriptLLMValidator.result(fromModelText: json, partial: partial, primary: true)
         XCTAssertEqual(r?.steps.map(\.text), ["Bake it."])
     }
