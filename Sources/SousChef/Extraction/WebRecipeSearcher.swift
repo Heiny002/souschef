@@ -15,6 +15,16 @@ enum WebRecipeSearcher {
 
     /// Search for recipe pages matching the query. Returns up to 3 filtered candidate URLs.
     static func search(query: String) async -> [SearchResult] {
+        // Strategy 0: Perplexity — a live web search that hands back the pages it used.
+        // First because it's the only strategy that works without a deployed backend or a
+        // wired Google CSE key; the other two remain as fallbacks.
+        let discoveries = await PerplexitySearcher.search(.dish(query))
+        if !discoveries.isEmpty {
+            return filterRecipeResults(discoveries.map {
+                SearchResult(url: $0.url, title: $0.title)
+            })
+        }
+
         // Strategy 1: Server-side search endpoint
         if let results = await serverSearch(query: query), !results.isEmpty {
             return filterRecipeResults(results)

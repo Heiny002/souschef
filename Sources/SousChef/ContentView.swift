@@ -6,6 +6,9 @@ struct ContentView: View {
             RecipeLibraryView()
                 .tabItem { Label("Library", systemImage: "book.closed") }
                 .toolbarBackground(Color.scBackground, for: .tabBar)
+            DiscoverView()
+                .tabItem { Label("Discover", systemImage: "magnifyingglass") }
+                .toolbarBackground(Color.scBackground, for: .tabBar)
             DinerProfilesView()
                 .tabItem { Label("Diners", systemImage: "person.2") }
                 .toolbarBackground(Color.scBackground, for: .tabBar)

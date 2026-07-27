@@ -18,6 +18,7 @@
 		FEED0000000000000000CF0D /* InstagramWebViewExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF0E /* InstagramWebViewExtractor.swift */; };
 		FEED0000000000000000CF0F /* InstagramAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF10 /* InstagramAuth.swift */; };
 		FEED0000000000000000CF11 /* InstagramConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF12 /* InstagramConnectView.swift */; };
+		FEED0000000000000000BC11 /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000BC12 /* DiscoverView.swift */; };
 		FEED0000000000000000CF05 /* ImageTextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF06 /* ImageTextRecognizer.swift */; };
 		FEED0000000000000000CF07 /* CameraImagePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF08 /* CameraImagePicker.swift */; };
 		FEED0000000000000000CF09 /* RecipeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CF0A /* RecipeScannerView.swift */; };
@@ -26,6 +27,7 @@
 		FEED0000000000000000CB01 /* LLMCaptionStructurerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CB02 /* LLMCaptionStructurerTests.swift */; };
 		FEED0000000000000000ED01 /* ComponentSequencerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000ED02 /* ComponentSequencerTests.swift */; };
 		FEED0000000000000000FA11 /* SocialTextFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000FA12 /* SocialTextFilterTests.swift */; };
+		FEED0000000000000000BB21 /* PerplexitySearcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000BB22 /* PerplexitySearcherTests.swift */; };
 		FEED0000000000000000FC11 /* ApplianceDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000FC12 /* ApplianceDetectorTests.swift */; };
 		FEED0000000000000000DF01 /* RecipeScalingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000DF02 /* RecipeScalingTests.swift */; };
 		FEED0000000000000000FB11 /* ServingSizeInferrerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000FB12 /* ServingSizeInferrerTests.swift */; };
@@ -73,6 +75,7 @@
 		FEED0000000000000000CA01 /* LLMCaptionStructurer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CA02 /* LLMCaptionStructurer.swift */; };
 		FEED0000000000000000EC01 /* ComponentSequencer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EC02 /* ComponentSequencer.swift */; };
 		FEED0000000000000000EE11 /* SocialTextFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EE12 /* SocialTextFilter.swift */; };
+		FEED0000000000000000BA11 /* PerplexitySearcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000BA12 /* PerplexitySearcher.swift */; };
 		FEED0000000000000000DE01 /* RecipeScaling.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000DE02 /* RecipeScaling.swift */; };
 		FEED0000000000000000EF11 /* ServingSizeInferrer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EF12 /* ServingSizeInferrer.swift */; };
 		A71D307287F47F12A1420796 /* TranscriptLLMValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9ACA7716EC503F142D4F8B /* TranscriptLLMValidator.swift */; };
@@ -112,6 +115,7 @@
 		FEED0000000000000000CA02 /* LLMCaptionStructurer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMCaptionStructurer.swift; sourceTree = "<group>"; };
 		FEED0000000000000000EC02 /* ComponentSequencer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentSequencer.swift; sourceTree = "<group>"; };
 		FEED0000000000000000EE12 /* SocialTextFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialTextFilter.swift; sourceTree = "<group>"; };
+		FEED0000000000000000BA12 /* PerplexitySearcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerplexitySearcher.swift; sourceTree = "<group>"; };
 		FEED0000000000000000DE02 /* RecipeScaling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeScaling.swift; sourceTree = "<group>"; };
 		FEED0000000000000000EF12 /* ServingSizeInferrer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServingSizeInferrer.swift; sourceTree = "<group>"; };
 		07D492E365A4AB46C47203BF /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
@@ -166,6 +170,7 @@
 		FEED0000000000000000CF0E /* InstagramWebViewExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramWebViewExtractor.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF10 /* InstagramAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramAuth.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF12 /* InstagramConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramConnectView.swift; sourceTree = "<group>"; };
+		FEED0000000000000000BC12 /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF06 /* ImageTextRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageTextRecognizer.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF08 /* CameraImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraImagePicker.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CF0A /* RecipeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeScannerView.swift; sourceTree = "<group>"; };
@@ -174,6 +179,7 @@
 		FEED0000000000000000CB02 /* LLMCaptionStructurerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMCaptionStructurerTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000ED02 /* ComponentSequencerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentSequencerTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000FA12 /* SocialTextFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialTextFilterTests.swift; sourceTree = "<group>"; };
+		FEED0000000000000000BB22 /* PerplexitySearcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerplexitySearcherTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000FC12 /* ApplianceDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplianceDetectorTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000DF02 /* RecipeScalingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeScalingTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000FB12 /* ServingSizeInferrerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServingSizeInferrerTests.swift; sourceTree = "<group>"; };
@@ -289,6 +295,7 @@
 			children = (
 				2DE77EF4D3ED40987FB6DD69 /* CompatibilityView.swift */,
 				FEED0000000000000000CF12 /* InstagramConnectView.swift */,
+				FEED0000000000000000BC12 /* DiscoverView.swift */,
 				FEED0000000000000000CF08 /* CameraImagePicker.swift */,
 				FEED0000000000000000CF0A /* RecipeScannerView.swift */,
 				43A1CD6E33671039BE2F1D6F /* CookModeView.swift */,
@@ -338,6 +345,7 @@
 				FEED0000000000000000CB02 /* LLMCaptionStructurerTests.swift */,
 				FEED0000000000000000ED02 /* ComponentSequencerTests.swift */,
 				FEED0000000000000000FA12 /* SocialTextFilterTests.swift */,
+				FEED0000000000000000BB22 /* PerplexitySearcherTests.swift */,
 				FEED0000000000000000FC12 /* ApplianceDetectorTests.swift */,
 			);
 			path = Extraction;
@@ -467,6 +475,7 @@
 				FEED0000000000000000CA02 /* LLMCaptionStructurer.swift */,
 				FEED0000000000000000EC02 /* ComponentSequencer.swift */,
 				FEED0000000000000000EE12 /* SocialTextFilter.swift */,
+				FEED0000000000000000BA12 /* PerplexitySearcher.swift */,
 				82FF8F6B3A0D2953DB61A55C /* MicrodataExtractor.swift */,
 				D6E7F8091A2B3C4D5E6F7081 /* IngredientAnnotator.swift */,
 				7560654AFD354C4655DEEC21 /* MicroStepSplitter.swift */,
@@ -621,6 +630,7 @@
 				FEED0000000000000000CF0D /* InstagramWebViewExtractor.swift in Sources */,
 				FEED0000000000000000CF0F /* InstagramAuth.swift in Sources */,
 				FEED0000000000000000CF11 /* InstagramConnectView.swift in Sources */,
+				FEED0000000000000000BC11 /* DiscoverView.swift in Sources */,
 				FEED0000000000000000CF05 /* ImageTextRecognizer.swift in Sources */,
 				FEED0000000000000000CF07 /* CameraImagePicker.swift in Sources */,
 				FEED0000000000000000CF09 /* RecipeScannerView.swift in Sources */,
@@ -634,6 +644,7 @@
 				FEED0000000000000000CA01 /* LLMCaptionStructurer.swift in Sources */,
 				FEED0000000000000000EC01 /* ComponentSequencer.swift in Sources */,
 				FEED0000000000000000EE11 /* SocialTextFilter.swift in Sources */,
+				FEED0000000000000000BA11 /* PerplexitySearcher.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* IngredientAnnotator.swift in Sources */,
 				9E4BF5BA4F11E86F358EF5FF /* MicroStepSplitter.swift in Sources */,
 				FEED0000000000000000AA01 /* StepSequencer.swift in Sources */,
@@ -681,6 +692,7 @@
 				FEED0000000000000000CB01 /* LLMCaptionStructurerTests.swift in Sources */,
 				FEED0000000000000000ED01 /* ComponentSequencerTests.swift in Sources */,
 				FEED0000000000000000FA11 /* SocialTextFilterTests.swift in Sources */,
+				FEED0000000000000000BB21 /* PerplexitySearcherTests.swift in Sources */,
 				FEED0000000000000000FC11 /* ApplianceDetectorTests.swift in Sources */,
 				FEED0000000000000000DF01 /* RecipeScalingTests.swift in Sources */,
 				FEED0000000000000000FB11 /* ServingSizeInferrerTests.swift in Sources */,
