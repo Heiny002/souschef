@@ -159,13 +159,16 @@ actor LLMCaptionStructurer {
         // Ingredients tolerate both shapes: [{"text","section"}] (requested) and ["…"]
         // (in case the model simplifies), so a schema drift doesn't drop the whole list.
         if let raw = dict["ingredients"] as? [Any] {
+            // cleanEntry rather than a plain isNoiseLine reject: "2 peaches @traderjoes" isn't
+            // noise, but it shouldn't keep the mention either — it's kept and cleaned.
             result.ingredients = raw.compactMap { item -> RawIngredient? in
                 if let obj = item as? [String: Any] {
-                    guard let text = (obj["text"] as? String)?.nonEmpty,
-                          !SocialTextFilter.isNoiseLine(text) else { return nil }
+                    guard let raw = (obj["text"] as? String)?.nonEmpty,
+                          let text = SocialTextFilter.cleanEntry(raw) else { return nil }
                     return RawIngredient(text: text, section: (obj["section"] as? String)?.nonEmpty)
                 }
-                if let text = (item as? String)?.nonEmpty, !SocialTextFilter.isNoiseLine(text) {
+                if let raw = (item as? String)?.nonEmpty,
+                   let text = SocialTextFilter.cleanEntry(raw) {
                     return RawIngredient(text: text, section: nil)
                 }
                 return nil
@@ -180,16 +183,22 @@ actor LLMCaptionStructurer {
             for item in rawSteps {
                 if let obj = item as? [String: Any] {
                     // Drop hashtag walls / CTAs the model let through — a recipe's last step
-                    // must never be "#easyrecipes #summerfood".
-                    guard let text = (obj["text"] as? String)?.nonEmpty,
-                          !SocialTextFilter.isNoiseLine(text) else { continue }
-                    let bullets = (obj["items"] as? [Any])?.compactMap { ($0 as? String)?.nonEmpty } ?? []
+                    // must never be "#easyrecipes #summerfood" — and clean the ones that carry
+                    // a trailing tag onto otherwise-real text.
+                    guard let rawText = (obj["text"] as? String)?.nonEmpty,
+                          let text = SocialTextFilter.cleanEntry(rawText) else { continue }
+                    // The bullets were the one unfiltered path: a tag here was concatenated
+                    // into the step body unchecked.
+                    let bullets = ((obj["items"] as? [Any]) ?? [])
+                        .compactMap { ($0 as? String)?.nonEmpty }
+                        .compactMap { SocialTextFilter.cleanEntry($0) }
                     let body = bullets.isEmpty
                         ? text
                         : text + "\n" + bullets.map { "• \($0)" }.joined(separator: "\n")
                     steps.append(RawStep(order: steps.count + 1, text: body,
                                          section: (obj["section"] as? String)?.nonEmpty))
-                } else if let text = (item as? String)?.nonEmpty, !SocialTextFilter.isNoiseLine(text) {
+                } else if let rawText = (item as? String)?.nonEmpty,
+                          let text = SocialTextFilter.cleanEntry(rawText) {
                     steps.append(RawStep(order: steps.count + 1, text: text))
                 }
             }

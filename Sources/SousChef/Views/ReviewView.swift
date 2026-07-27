@@ -20,6 +20,10 @@ struct ReviewView: View {
     @State private var ingredients: [EditableIngredient]
     @State private var steps: [EditableStep]
     @State private var validationReport: ValidationReport?
+    /// Cached protein-based serving estimate. Computed with the validation pass rather than on
+    /// access: it re-parses every ingredient, and the view reads it several times per render
+    /// (including once per element inside a filter).
+    @State private var suggestedServings: Int?
 
     private let parser = IngredientParser()
     private let validator = RecipeValidator()
@@ -164,9 +168,8 @@ struct ReviewView: View {
     }
 
     /// Protein-based estimate offered as a one-tap answer when the recipe never said.
-    private var inferredServings: Int? {
-        ServingSizeInferrer.infer(from: ingredients.map { parser.parse(raw: $0.text) })
-    }
+    /// Reads the cache filled by `runValidation()`.
+    private var inferredServings: Int? { suggestedServings }
 
     private var yieldSection: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
@@ -214,7 +217,10 @@ struct ReviewView: View {
 
     private func servingChip(_ label: String, highlighted: Bool) -> some View {
         Button {
-            recipeYield = "\(label) servings"
+            // Insert the bare number. The field stays free text so "36 cookies" and
+            // "4-6 servings" still work, and RecipeYield.parse reads a lone "4" fine
+            // (defaulting the noun to "servings"), so scaling is unaffected.
+            recipeYield = label
         } label: {
             Text(highlighted ? "\(label) (suggested)" : label)
                 .font(.scCaption)
@@ -550,6 +556,9 @@ struct ReviewView: View {
         }
         let report = validator.validate(result: editedResult, ingredients: parsedIngredients)
         validationReport = report
+
+        // Reuse the parse we just did rather than re-parsing for the serving estimate.
+        suggestedServings = ServingSizeInferrer.infer(from: parsedIngredients)
 
         // Tag each ingredient with its validation state
         for (idx, parsed) in parsedIngredients.enumerated() {

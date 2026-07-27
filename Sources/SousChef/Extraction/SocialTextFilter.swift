@@ -73,32 +73,130 @@ enum SocialTextFilter {
         "you guys", "i can't stop", "pov:", "when you", "nothing beats", "if you love",
     ]
 
+    /// A CTA phrase only condemns a line this short. Matching is by prefix, so without a cap
+    /// "Full recipe: 2 cups flour, 1 tsp salt, 3 eggs, bake at 350" — a real ingredient line —
+    /// would be deleted wholesale by the "full recipe" entry.
+    private static let maxCTAWords = 12
+
+    // MARK: - Tag tokens
+
+    /// True when a whitespace-delimited token is a social tag rather than recipe notation.
+    ///
+    /// `#` and `@` both carry real culinary meaning, so this is deliberately strict:
+    /// "1 # ground beef" (pounds), "a #10 can", "Bake @ 350F", "Roast @425F" must all survive.
+    /// The rules: trailing punctuation/emoji are trimmed off first (so "#dinner." and "#food🍑"
+    /// still count, and a bare "#" or "@" reduces to nothing and never counts); the body must be
+    /// at least two word characters and contain a letter (so "#2" and "#10" are not tags).
+    /// A `#` tag may start with a digit — "#30minutemeals" is an extremely common hashtag —
+    /// but an `@` tag may not, which is what keeps "@350F" out.
+    static func isTagToken(_ token: some StringProtocol) -> Bool {
+        guard let marker = token.first, marker == "#" || marker == "@" else { return false }
+        // Keep only the leading run of word characters — this both strips trailing
+        // punctuation/emoji and rejects a token whose body isn't tag-shaped.
+        let body = token.dropFirst().prefix { $0.isLetter || $0.isNumber || $0 == "_" }
+        guard body.count >= 2, body.contains(where: { $0.isLetter }) else { return false }
+        if marker == "@", let first = body.first, !(first.isLetter || first == "_") { return false }
+        return true
+    }
+
+    /// Remove a trailing run of tag tokens — the shape social captions actually use.
+    /// "Bake 20 minutes #easy #dinner" → "Bake 20 minutes". Stops at the first non-tag token,
+    /// so a `#` earlier in the line is never touched. Returns "" when the line was only tags.
+    static func stripTrailingTags(_ line: String) -> String {
+        var tokens = line.split(whereSeparator: \.isWhitespace)
+        while let last = tokens.last, isTagToken(last) { tokens.removeLast() }
+        return tokens.joined(separator: " ")
+            .trimmingCharacters(in: CharacterSet(charactersIn: " \t·•-–—,;:"))
+    }
+
+    // MARK: - Cleaning
+
+    /// Clean one line: nil to drop it, "" for a blank line (kept so paragraph structure — and
+    /// therefore header detection — survives), otherwise the line minus its trailing tag run.
+    static func cleanLine(_ line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return "" }
+        if isNoiseLine(trimmed) { return nil }
+        let stripped = stripTrailingTags(trimmed)
+        // Stripping emptied it → it was a tag wall after all; drop rather than emit a blank.
+        return stripped.isEmpty ? nil : stripped
+    }
+
+    /// Clean one extracted field — an ingredient or a step, which may be several lines when it
+    /// carries a bulleted list. nil when nothing survives. This is the guard every extractor's
+    /// OUTPUT should pass through, so noise can't reach a recipe even from text we never cleaned
+    /// on the way in (the LLM receives the raw caption by design).
+    static func cleanEntry(_ text: String) -> String? {
+        let kept = text.components(separatedBy: .newlines).compactMap { line -> String? in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return trimmed.isEmpty ? nil : cleanLine(trimmed)
+        }
+        let joined = kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return joined.isEmpty ? nil : joined
+    }
+
     /// True when a caption line is social noise rather than recipe content.
     static func isNoiseLine(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return false }   // blank lines preserve structure
 
         // Hashtag / mention walls.
-        let tokens = trimmed.split(separator: " ")
-        if !tokens.isEmpty, tokens.allSatisfy({ $0.hasPrefix("#") || $0.hasPrefix("@") }) {
-            return true
-        }
+        let tokens = trimmed.split(whereSeparator: \.isWhitespace)
+        if !tokens.isEmpty, tokens.allSatisfy({ isTagToken($0) }) { return true }
 
         // Emoji/punctuation-only decoration lines.
         if !trimmed.contains(where: { $0.isLetter || $0.isNumber }) { return true }
 
-        // Strip leading emoji before phrase-matching — CTAs are often decorated ("💾 Save this!").
-        let core = trimmed.drop { !$0.isLetter && !$0.isNumber }.description.lowercased()
-        for phrase in ctaPhrases where core.hasPrefix(phrase) { return true }
-        for opener in narrativeOpeners where core.hasPrefix(opener) { return true }
+        // Phrase-match against the line with tag runs removed from BOTH ends and leading emoji
+        // dropped — CTAs are routinely decorated ("💾 Save this!") or tagged ("#easyrecipes
+        // Save this for later"), and either used to hide the phrase from a prefix match.
+        var core = trimmed
+        var tokensNoTags = core.split(whereSeparator: \.isWhitespace)
+        while let first = tokensNoTags.first, isTagToken(first) { tokensNoTags.removeFirst() }
+        while let last = tokensNoTags.last, isTagToken(last) { tokensNoTags.removeLast() }
+        core = tokensNoTags.joined(separator: " ")
+        let stripped = core.drop { !$0.isLetter && !$0.isNumber }.description.lowercased()
+        guard !stripped.isEmpty else { return true }   // nothing but tags and decoration
+
+        // A CTA only condemns a SHORT line; a long one is a real instruction that happens to
+        // open with a marketing-sounding phrase.
+        if stripped.split(whereSeparator: \.isWhitespace).count <= maxCTAWords {
+            for phrase in ctaPhrases where stripped.hasPrefix(phrase) { return true }
+        }
+        for opener in narrativeOpeners where stripped.hasPrefix(opener) { return true }
         return false
     }
 
-    /// Drop noise lines, keeping blank lines so paragraph structure (and therefore header
-    /// detection) survives.
+    /// Drop noise lines and strip trailing tag runs from the survivors, keeping blank lines so
+    /// paragraph structure (and therefore header detection) survives. Idempotent: the pipeline
+    /// cleans a caption before parsing and PastedTextExtractor cleans again defensively.
     static func clean(_ caption: String) -> String {
         caption.components(separatedBy: .newlines)
-            .filter { !isNoiseLine($0) }
+            .compactMap { cleanLine($0) }
             .joined(separator: "\n")
+    }
+
+    // MARK: - Result sanitizing
+
+    /// Last line of defence: strip social noise from a finished extraction, whatever produced
+    /// it. Applied at the pipeline boundary so results from the LLM (which is sent the RAW
+    /// caption by design), the transcript validator, and the web-search fallbacks are all
+    /// covered by one pass. A clean recipe passes through unchanged.
+    static func sanitize(_ result: ExtractionResult) -> ExtractionResult {
+        var out = result
+        out.title = cleanTitle(result.title)
+        out.ingredients = result.ingredients.compactMap { ingredient in
+            guard let text = cleanEntry(ingredient.text) else { return nil }
+            return RawIngredient(text: text, section: ingredient.section)
+        }
+        out.steps = result.steps.compactMap { step -> RawStep? in
+            guard let text = cleanEntry(step.text) else { return nil }
+            return RawStep(order: step.order, text: text, section: step.section)
+        }
+        // Re-number so a dropped step doesn't leave a gap in the sequence.
+        out.steps = out.steps.enumerated().map { idx, step in
+            RawStep(order: idx + 1, text: step.text, section: step.section)
+        }
+        return out
     }
 }

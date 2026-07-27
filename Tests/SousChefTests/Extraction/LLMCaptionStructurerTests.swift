@@ -118,6 +118,29 @@ final class LLMCaptionStructurerTests: XCTestCase {
                        "null items adds no bullets")
     }
 
+    func testStepItemsBulletsAreFilteredForTags() {
+        // The bullets were the one path with no filtering — a tag here was concatenated into
+        // the step body unchecked.
+        let json = """
+        {
+          "title": "Steak", "ingredients": [{"text": "1 lb flank steak"}],
+          "steps": [{"text": "Season the steak.", "section": null,
+                     "items": ["1 tsp paprika", "#spiceblend"]}]
+        }
+        """
+        let body = LLMCaptionStructurer.recipe(fromModelText: json)?.steps.first?.text ?? ""
+        XCTAssertTrue(body.contains("• 1 tsp paprika"))
+        XCTAssertFalse(body.contains("#"), "body: \(body)")
+    }
+
+    func testStepWithTrailingHashtagIsCleanedNotDropped() {
+        // Previously isNoiseLine returned false for this, so it was stored verbatim WITH tags.
+        let json = #"{"title": "X", "ingredients": [{"text": "2 peaches @traderjoes"}], "steps": [{"text": "Bake 20 minutes #easyrecipes"}]}"#
+        let r = LLMCaptionStructurer.recipe(fromModelText: json)
+        XCTAssertEqual(r?.steps.map(\.text), ["Bake 20 minutes"])
+        XCTAssertEqual(r?.ingredients.map(\.text), ["2 peaches"])
+    }
+
     func testPlainStringStepsStillParse() {
         // Older/simplified shape must keep working — steps as bare strings, no section.
         let json = #"{"title": "Toast", "ingredients": [{"text": "bread"}], "steps": ["Toast it."]}"#

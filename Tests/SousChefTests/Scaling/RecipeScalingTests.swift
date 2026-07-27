@@ -123,6 +123,13 @@ final class RecipeScalingTests: XCTestCase {
         XCTAssertEqual(RecipeYield.parse("4-6 servings")?.count, 4)       // lower bound
     }
 
+    func testRecipeYieldParsesABareNumber() {
+        // The review screen's serving chips insert a bare number, so this is the contract
+        // scaling depends on — the noun defaults to "servings".
+        XCTAssertEqual(RecipeYield.parse("4")?.count, 4)
+        XCTAssertEqual(RecipeYield.parse("4")?.noun, "servings")
+    }
+
     func testRecipeYieldReturnsNilWithoutANumber() {
         XCTAssertNil(RecipeYield.parse("a dozen"))
         XCTAssertNil(RecipeYield.parse(""))

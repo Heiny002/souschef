@@ -12,7 +12,9 @@ struct TranscriptExtractor {
     func extract(transcript: String) -> ExtractionResult {
         var result = ExtractionResult(extractionMethod: Self.method)
 
-        let normalized = normalizeNumbers(transcript)
+        // Spoken transcripts carry no hashtags, so this is a no-op for them — it matters
+        // because this same text includes the caption on social imports.
+        let normalized = normalizeNumbers(SocialTextFilter.clean(transcript))
         let sentences = tokenizeSentences(normalized)
 
         result.ingredients = extractIngredients(from: sentences, original: normalized)
@@ -194,18 +196,22 @@ struct TranscriptExtractor {
             let hasCookingVerb = !words.intersection(cookingVerbs).isEmpty
             let hasTemporalMarker = Self.temporalMarkers.contains { lower.hasPrefix($0) || lower.contains(" \($0) ") }
 
-            if (hasCookingVerb || hasTemporalMarker) && sentence.count > 15 {
-                steps.append(RawStep(order: order, text: sentence))
+            if (hasCookingVerb || hasTemporalMarker) && sentence.count > 15,
+               let cleaned = SocialTextFilter.cleanEntry(sentence) {
+                steps.append(RawStep(order: order, text: cleaned))
                 order += 1
             }
         }
 
-        // If we got very few steps from filtering, fall back to all long sentences
+        // If we got very few steps from filtering, fall back to all long sentences.
+        // This is where hashtag walls used to become steps verbatim: any sentence over 20
+        // characters qualified, and a wall easily clears that.
         if steps.count < 2 {
-            steps = sentences.enumerated().compactMap { idx, s in
+            steps = sentences.compactMap { s -> String? in
                 guard s.count > 20 else { return nil }
-                return RawStep(order: idx + 1, text: s)
+                return SocialTextFilter.cleanEntry(s)
             }
+            .enumerated().map { idx, text in RawStep(order: idx + 1, text: text) }
         }
 
         return steps

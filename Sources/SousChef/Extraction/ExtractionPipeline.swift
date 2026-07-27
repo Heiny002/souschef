@@ -35,7 +35,11 @@ actor ExtractionPipeline {
         case .webPage:
             return try await extractFromWebPage(urlString: urlString)
         case .tikTok, .instagram, .youTube:
-            return await extractFromVideo(urlString: urlString, progress: progress)
+            // Sanitize at this single boundary rather than inside extractFromVideo, which has
+            // several early returns (bio-link and web-search paths). One pass here covers every
+            // one of them — including the LLM path, which is deliberately sent the raw caption.
+            return SocialTextFilter.sanitize(
+                await extractFromVideo(urlString: urlString, progress: progress))
         }
     }
 
@@ -158,8 +162,16 @@ actor ExtractionPipeline {
         }
 
         // Step 3: Layer 5 — rule-based NLP on transcript (existing, unchanged)
+        // Clean the caption ONCE and reuse it: previously this was computed inline for the
+        // paste-style parse and thrown away, which is why the transcript parse below was still
+        // seeing raw hashtag walls and turning them into steps.
+        // NOTE: `allCaptionText` above deliberately keeps the RAW caption — "link in bio" is
+        // both a CTA phrase this strips AND the signal CaptionAnalyzer needs to trigger
+        // bio-link resolution, so cleaning it would silently disable that whole branch.
         let transcriptText = videoTranscript?.combinedText
-        let fullText = [transcriptText, captionText].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+        let cleanedCaption = captionText.isEmpty ? "" : Self.cleanCaptionForParsing(captionText)
+        let fullText = [transcriptText, cleanedCaption]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
 
         guard !fullText.isEmpty else {
             var empty = ExtractionResult(extractionMethod: "video-no-transcript")
@@ -177,9 +189,13 @@ actor ExtractionPipeline {
         // than the spoken-word transcript extractor. Keep whichever candidate is richer.
         progress?("Reading the recipe…")
         var result = TranscriptExtractor().extract(transcript: fullText)
-        if !captionText.isEmpty {
-            let pasted = PastedTextExtractor().extract(text: Self.cleanCaptionForParsing(captionText))
-            if Self.completeness(pasted) > Self.completeness(result) {
+        if !cleanedCaption.isEmpty {
+            let pasted = PastedTextExtractor().extract(text: cleanedCaption)
+            // Ties go to the paste-style parse. It reads written structure ("Ingredients:",
+            // bullets) far better than the spoken-word extractor, so on equal completeness it
+            // is the better recipe — and the old strictly-greater test meant a tie silently
+            // kept the transcript parse instead.
+            if Self.completeness(pasted) >= Self.completeness(result) {
                 result = pasted
             }
         }

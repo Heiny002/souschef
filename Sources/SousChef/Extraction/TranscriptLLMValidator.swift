@@ -77,6 +77,10 @@ actor TranscriptLLMValidator {
         Full transcript:
         \(transcript.prefix(8000))
 
+        Exclude hashtags, @mentions, emojis, calls to action ("save this", "follow for
+        more") and marketing narrative. NEVER return a hashtag line or an @mention as a
+        step or an ingredient.
+
         Return JSON:
         {
           "title": "string or null (null if already correct)",
@@ -90,6 +94,10 @@ actor TranscriptLLMValidator {
     private func primaryPrompt(transcript: String) -> String {
         return """
         Extract the complete recipe from this cooking video transcript. Return ONLY valid JSON.
+
+        Exclude hashtags, @mentions, emojis, calls to action ("save this", "follow for
+        more") and marketing narrative. NEVER return a hashtag line or an @mention as a
+        step or an ingredient.
 
         {
           "title": "string or null",
@@ -114,36 +122,64 @@ actor TranscriptLLMValidator {
               let text = firstBlock["text"] as? String else {
             throw TranscriptLLMError.malformedResponse
         }
+        guard let result = Self.result(fromModelText: text, partial: partial,
+                                       primary: mode == .primary) else {
+            throw TranscriptLLMError.malformedResponse
+        }
+        return result
+    }
 
-        let jsonText = extractJSON(from: text)
+    /// Pure mapping from the model's text to a result — split out from the network call so the
+    /// filtering below is unit-testable, mirroring LLMCaptionStructurer.recipe(fromModelText:).
+    nonisolated static func result(fromModelText text: String,
+                                   partial: ExtractionResult,
+                                   primary: Bool) -> ExtractionResult? {
+        let jsonText = JSONResponseParser.extractObject(from: text)
         guard let jsonData = jsonText.data(using: .utf8),
               let dict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
-            throw TranscriptLLMError.malformedResponse
+            return nil
         }
 
         var result = partial
-        result.extractionMethod = Self.method
+        result.extractionMethod = method
 
-        if mode == .primary {
-            result.title = (dict["title"] as? String) ?? partial.title
+        // Everything the model returns is filtered: this path had no guard at all, so a
+        // hashtag wall came straight back as a step.
+        func clean(_ values: [String]) -> [String] {
+            values.compactMap { SocialTextFilter.cleanEntry($0) }
+        }
+
+        if primary {
+            // cleanTitle so engagement metadata ("69K likes, 410 comments - …") can't re-enter
+            // here after being filtered out upstream.
+            result.title = SocialTextFilter.cleanTitle(dict["title"] as? String) ?? partial.title
             result.recipeYield = (dict["recipeYield"] as? String) ?? partial.recipeYield
             if let prepMins = dict["prepTimeMinutes"] as? Int { result.prepTime = prepMins * 60 }
             if let cookMins = dict["cookTimeMinutes"] as? Int { result.cookTime = cookMins * 60 }
             if let rawIngredients = dict["ingredients"] as? [String] {
-                result.ingredients = rawIngredients.map { RawIngredient(text: $0) }
+                result.ingredients = clean(rawIngredients).map { RawIngredient(text: $0) }
             }
             if let rawSteps = dict["steps"] as? [String] {
-                result.steps = rawSteps.enumerated().map { idx, text in RawStep(order: idx + 1, text: text) }
+                result.steps = clean(rawSteps).enumerated()
+                    .map { idx, text in RawStep(order: idx + 1, text: text) }
             }
         } else {
             // Validation mode: merge LLM additions with existing
-            if let t = dict["title"] as? String, partial.title == nil { result.title = t }
+            if let t = SocialTextFilter.cleanTitle(dict["title"] as? String), partial.title == nil {
+                result.title = t
+            }
             if let y = dict["recipeYield"] as? String { result.recipeYield = y }
             if let additional = dict["additionalIngredients"] as? [String] {
-                result.ingredients += additional.map { RawIngredient(text: $0) }
+                result.ingredients += clean(additional).map { RawIngredient(text: $0) }
             }
-            if let allSteps = dict["allSteps"] as? [String], allSteps.count > partial.steps.count {
-                result.steps = allSteps.enumerated().map { idx, text in RawStep(order: idx + 1, text: text) }
+            if let allSteps = dict["allSteps"] as? [String] {
+                // Compare the FILTERED count: comparing the raw count meant filtering could
+                // shrink the list below what we already had and still replace it.
+                let kept = clean(allSteps)
+                if kept.count > partial.steps.count {
+                    result.steps = kept.enumerated()
+                        .map { idx, text in RawStep(order: idx + 1, text: text) }
+                }
             }
         }
 

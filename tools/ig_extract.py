@@ -448,21 +448,69 @@ NARRATIVE = ("the kind of", "this is the", "trust me", "obsessed with", "my favo
              "you guys", "i can't stop", "pov:", "when you", "nothing beats", "if you love")
 
 
+MAX_CTA_WORDS = 12
+
+
+def is_tag_token(tok):
+    """Mirrors SocialTextFilter.isTagToken. '#10 can' and '@350F' are NOT tags."""
+    if not tok or tok[0] not in "#@":
+        return False
+    body = ""
+    for c in tok[1:]:
+        if c.isalnum() or c == "_":
+            body += c
+        else:
+            break
+    if len(body) < 2 or not any(c.isalpha() for c in body):
+        return False
+    if tok[0] == "@" and not (body[0].isalpha() or body[0] == "_"):
+        return False
+    return True
+
+
+def strip_trailing_tags(line):
+    """Mirrors SocialTextFilter.stripTrailingTags — trailing runs only."""
+    toks = line.split()
+    while toks and is_tag_token(toks[-1]):
+        toks.pop()
+    return " ".join(toks).strip(" \t·•-–—,;:")
+
+
 def is_noise(line):
     """Mirrors SocialTextFilter.isNoiseLine in the app."""
     t = line.strip()
     if not t:
         return False
     toks = t.split()
-    if toks and all(x.startswith("#") or x.startswith("@") for x in toks):
+    if toks and all(is_tag_token(x) for x in toks):
         return True
     if not any(c.isalnum() for c in t):
         return True
-    core = t
-    while core and not (core[0].isalnum()):
+    core_toks = list(toks)
+    while core_toks and is_tag_token(core_toks[0]):
+        core_toks.pop(0)
+    while core_toks and is_tag_token(core_toks[-1]):
+        core_toks.pop()
+    core = " ".join(core_toks)
+    while core and not core[0].isalnum():
         core = core[1:]
     core = core.strip().lower()
-    return core.startswith(CTA) or core.startswith(NARRATIVE)
+    if not core:
+        return True
+    if len(core.split()) <= MAX_CTA_WORDS and core.startswith(CTA):
+        return True
+    return core.startswith(NARRATIVE)
+
+
+def clean_line(line):
+    """None = drop, '' = blank (kept), else the line minus its trailing tag run."""
+    t = line.strip()
+    if not t:
+        return ""
+    if is_noise(t):
+        return None
+    stripped = strip_trailing_tags(t)
+    return stripped or None
 
 
 ENGAGEMENT = re.compile(r"\d+(\.\d+)?[km]?\s+(likes?|comments?|views?|shares?)", re.I)
@@ -483,7 +531,8 @@ def strip_engagement_prefix(cap):
 
 def clean_caption(cap):
     cap = strip_engagement_prefix(cap)
-    return "\n".join(line for line in cap.split("\n") if not is_noise(line))
+    out = [clean_line(l) for l in cap.split("\n")]
+    return "\n".join(l for l in out if l is not None)
 
 
 def parse_recipe(text):

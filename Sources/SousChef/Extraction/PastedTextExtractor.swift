@@ -30,7 +30,14 @@ struct PastedTextExtractor {
 
         // Instagram captions arrive HTML-encoded, so bullets and dashes come through as
         // entities (&#x2022;, &#x2013;). Decode first so markers strip and text renders.
-        let text = rawText.decodedHTMLEntities
+        // Skip the regex pass when there's nothing to decode — the pipeline already decoded.
+        let decoded = rawText.contains("&") ? rawText.decodedHTMLEntities : rawText
+
+        // Strip social noise here rather than at each call site: this covers the paste
+        // importer and the photo scanner, where users paste and screenshot Instagram captions
+        // complete with hashtag walls. `clean` is idempotent, so the pipeline pre-cleaning
+        // the same text costs nothing.
+        let text = SocialTextFilter.clean(decoded)
 
         let lines = text.components(separatedBy: .newlines).map {
             $0.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\r")))
@@ -192,9 +199,11 @@ struct PastedTextExtractor {
         } else {
             parts = block.map { stripMarker($0) }
         }
+        // Every step is born here, so this is where output filtering belongs: splitting a
+        // block into sentences can re-expose a trailing tag run ("…until golden. #easyrecipes")
+        // that line-based cleaning had no chance to see, because it wasn't its own line.
         return parts
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+            .compactMap { SocialTextFilter.cleanEntry($0) }
             .enumerated()
             .map { RawStep(order: $0.offset + 1, text: $0.element) }
     }

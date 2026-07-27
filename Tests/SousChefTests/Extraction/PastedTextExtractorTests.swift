@@ -192,6 +192,46 @@ final class PastedTextExtractorTests: XCTestCase {
         XCTAssertTrue(r.isViable)
     }
 
+    func testPastedInstagramCaptionDropsHashtagWallAndCTA() {
+        // The paste importer and the photo scanner both feed this extractor directly, and a
+        // pasted Instagram caption is exactly where hashtag walls come from.
+        let text = """
+        Peach Burrata Toast
+
+        Ingredients:
+        1 loaf sourdough
+        2 peaches, sliced
+
+        Grill the bread until charred.
+        Top with burrata.
+        Save this for your next dinner party
+        #easyrecipes #summerfood #dinnerideas
+        """
+        let r = PastedTextExtractor().extract(text: text)
+        XCTAssertEqual(r.ingredients.count, 2)
+        XCTAssertEqual(r.steps.count, 2)
+        XCTAssertFalse(r.ingredients.contains { $0.text.contains("#") })
+        XCTAssertFalse(r.steps.contains { $0.text.contains("#") })
+        XCTAssertFalse(r.steps.contains { $0.text.localizedCaseInsensitiveContains("save this") })
+    }
+
+    func testTrailingHashtagsInASingleStepBlockAreStripped() {
+        // Sentence splitting happens AFTER line-based cleaning, so a tag run riding on the
+        // last sentence of a block only becomes visible at step-assembly time.
+        let text = """
+        Toast
+
+        Ingredients
+        1 loaf sourdough
+
+        Steps
+        Grill the bread until charred. Top with burrata. #summer #recipes
+        """
+        let r = PastedTextExtractor().extract(text: text)
+        XCTAssertFalse(r.steps.isEmpty)
+        XCTAssertFalse(r.steps.contains { $0.text.contains("#") }, "steps: \(r.steps.map(\.text))")
+    }
+
     func testInlineNumberedStepsOnOneLine() {
         let text = """
         Toast
