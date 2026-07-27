@@ -200,6 +200,27 @@ actor ExtractionPipeline {
             }
         }
 
+        // Step 3.2: carousel slides. Many recipe carousels put the ingredients and method IN
+        // the images and leave the caption as a one-line hook, so the parse above finds nothing
+        // usable. Read the slides with on-device OCR and re-parse. Gated on the caption having
+        // failed, because it costs a download plus OCR per slide — a caption that already
+        // produced a recipe is both cheaper and more reliable than text lifted off a photo.
+        var carouselText = ""
+        if !result.isViable, URLRouter.classify(urlString) == .instagram,
+           let shortcode = VideoMetadataFetcher.instagramShortcode(from: urlString) {
+            carouselText = await CarouselTextExtractor.extractText(shortcode: shortcode,
+                                                                  progress: progress)
+            if !carouselText.isEmpty {
+                progress?("Reading the recipe…")
+                let fromSlides = PastedTextExtractor().extract(text: carouselText)
+                if Self.completeness(fromSlides) > Self.completeness(result) {
+                    result = fromSlides
+                }
+                debugTrace.append("carousel OCR: \(carouselText.count) chars → "
+                                  + "\(fromSlides.ingredients.count) ingredients, \(fromSlides.steps.count) steps")
+            }
+        }
+
         // Step 3.5: LLM caption structuring (Option A). Rule-based parsing hits a ceiling on
         // messy social captions — run-on ingredient groups under sub-labels, inline-numbered
         // steps, marketing narrative and hashtags — and can produce a viable-but-wrong split.
@@ -207,10 +228,14 @@ actor ExtractionPipeline {
         // class apps do it). Take it only when it's at least as complete as the deterministic
         // parse, so an off-day LLM response can't regress a caption the parser already nailed.
         // No key / failure → deterministic result stands (offline-safe fallback).
-        if let apiKey, !captionText.isEmpty, captionText.count >= 40 {
+        // Slide OCR is fed here too when the caption had nothing: text lifted off images comes
+        // back ragged (line breaks mid-sentence, headers split from their lists), which is
+        // exactly the mess the structurer handles better than the rule-based parser.
+        let textToStructure = captionText.count >= 40 ? captionText : carouselText
+        if let apiKey, textToStructure.count >= 40 {
             progress?("Structuring the recipe…")
             let structurer = LLMCaptionStructurer(apiKey: apiKey)
-            if let llm = try? await structurer.structure(caption: captionText, titleHint: titleHint),
+            if let llm = try? await structurer.structure(caption: textToStructure, titleHint: titleHint),
                llm.isViable, Self.completeness(llm) >= Self.completeness(result) {
                 result = llm
                 debugTrace.append("LLM structurer: \(llm.ingredients.count) ingredients, \(llm.steps.count) steps")

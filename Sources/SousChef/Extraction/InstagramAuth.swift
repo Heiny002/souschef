@@ -76,6 +76,69 @@ enum InstagramAuth {
     /// The stable authenticated route: Instagram's internal media-info API, keyed by the
     /// media id derived from the shortcode — no rotating GraphQL doc_id involved. This is
     /// the route that works today (verified end-to-end with the desktop tool).
+    /// Image URLs for a carousel post's slides, highest-resolution first, in slide order.
+    /// Empty for a single-image post or a reel.
+    ///
+    /// Many recipe carousels put the ingredients and method IN the slides and leave the caption
+    /// as a one-liner, so this is the only way to reach those recipes. Uses the same
+    /// authenticated media-info call as the caption, so it costs one request we may already
+    /// have made.
+    static func fetchCarouselImageURLs(shortcode: String) async -> [URL] {
+        guard let json = await fetchMediaInfo(shortcode: shortcode),
+              let items = json["items"] as? [[String: Any]], let first = items.first else {
+            return []
+        }
+        return carouselImageURLs(fromItem: first)
+    }
+
+    /// Pull slide image URLs out of a media-info item. Split out so it can be unit-tested
+    /// against a captured payload without a network call or a session.
+    static func carouselImageURLs(fromItem item: [String: Any]) -> [URL] {
+        guard let media = item["carousel_media"] as? [[String: Any]] else { return [] }
+        return media.compactMap { slide -> URL? in
+            guard let versions = slide["image_versions2"] as? [String: Any],
+                  let candidates = versions["candidates"] as? [[String: Any]] else { return nil }
+            // Candidates are ordered largest-first; take the biggest by area anyway rather than
+            // trusting the order, since OCR accuracy tracks resolution.
+            let best = candidates.max { a, b in
+                let areaA = ((a["width"] as? Int) ?? 0) * ((a["height"] as? Int) ?? 0)
+                let areaB = ((b["width"] as? Int) ?? 0) * ((b["height"] as? Int) ?? 0)
+                return areaA < areaB
+            }
+            guard let urlString = best?["url"] as? String else { return nil }
+            return URL(string: urlString)
+        }
+    }
+
+    /// The raw media-info payload — shared by the caption and carousel readers.
+    private static func fetchMediaInfo(shortcode: String) async -> [String: Any]? {
+        let cookies = await sessionCookies()
+        guard cookies.contains(where: { $0.name == "sessionid" && !$0.value.isEmpty }),
+              let mediaID = mediaID(fromShortcode: shortcode),
+              let url = URL(string: "https://www.instagram.com/api/v1/media/\(mediaID)/info/")
+        else { return nil }
+
+        var request = URLRequest(url: url)
+        request.setValue(cookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; "),
+                         forHTTPHeaderField: "Cookie")
+        request.setValue(cookies.first { $0.name == "csrftoken" }?.value ?? "",
+                         forHTTPHeaderField: "X-CSRFToken")
+        request.setValue("936619743392459", forHTTPHeaderField: "X-IG-App-ID")
+        request.setValue("https://www.instagram.com/p/\(shortcode)/", forHTTPHeaderField: "Referer")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+            + "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+            forHTTPHeaderField: "User-Agent")
+
+        let session = URLSession(configuration: .ephemeral)
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return json
+    }
+
     static func fetchCaptionViaMediaAPI(shortcode: String) async -> String? {
         let cookies = await sessionCookies()
         guard cookies.contains(where: { $0.name == "sessionid" && !$0.value.isEmpty }),

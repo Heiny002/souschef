@@ -1,6 +1,68 @@
 import XCTest
 @testable import SousChef
 
+/// Carousel posts often carry the recipe in the SLIDES with a throwaway caption, so the slide
+/// URLs and how their OCR text is stitched together are the load-bearing pure parts.
+final class CarouselExtractionTests: XCTestCase {
+
+    func testCarouselImageURLsTakeTheLargestCandidate() {
+        // Candidates are normally largest-first, but OCR accuracy tracks resolution so we pick
+        // by area rather than trusting the order.
+        let item: [String: Any] = [
+            "carousel_media": [
+                ["image_versions2": ["candidates": [
+                    ["url": "https://cdn/small.jpg", "width": 320, "height": 320],
+                    ["url": "https://cdn/big.jpg", "width": 1080, "height": 1080],
+                ]]],
+                ["image_versions2": ["candidates": [
+                    ["url": "https://cdn/two.jpg", "width": 1080, "height": 1350],
+                ]]],
+            ]
+        ]
+        let urls = InstagramAuth.carouselImageURLs(fromItem: item)
+        XCTAssertEqual(urls.map(\.absoluteString),
+                       ["https://cdn/big.jpg", "https://cdn/two.jpg"],
+                       "largest candidate per slide, in slide order")
+    }
+
+    func testNonCarouselPostYieldsNoSlides() {
+        // A reel or single image has no carousel_media — must not fabricate slides.
+        XCTAssertTrue(InstagramAuth.carouselImageURLs(fromItem: ["caption": ["text": "hi"]]).isEmpty)
+        XCTAssertTrue(InstagramAuth.carouselImageURLs(fromItem: [:]).isEmpty)
+    }
+
+    func testMalformedSlidesAreSkippedNotFatal() {
+        let item: [String: Any] = [
+            "carousel_media": [
+                ["image_versions2": ["candidates": [["width": 100, "height": 100]]]],  // no url
+                ["something_else": 1],
+                ["image_versions2": ["candidates": [
+                    ["url": "https://cdn/ok.jpg", "width": 1080, "height": 1080],
+                ]]],
+            ]
+        ]
+        XCTAssertEqual(InstagramAuth.carouselImageURLs(fromItem: item).map(\.absoluteString),
+                       ["https://cdn/ok.jpg"])
+    }
+
+    func testCombineSeparatesSlidesWithABlankLine() {
+        // The parser detects sections by paragraph structure, and a carousel's slides are
+        // already the recipe's natural sections — so the blank line between them matters.
+        let combined = CarouselTextExtractor.combine([
+            "Ingredients\n2 cups flour",
+            "Method\nMix and bake.",
+        ])
+        XCTAssertEqual(combined, "Ingredients\n2 cups flour\n\nMethod\nMix and bake.")
+    }
+
+    func testCombineDropsEmptySlidesAndTrailingWhitespace() {
+        // A slide that OCR'd to nothing must not leave a gap the parser reads as a break.
+        XCTAssertEqual(CarouselTextExtractor.combine(["Ingredients\n", "   ", "", "Method"]),
+                       "Ingredients\n\nMethod")
+        XCTAssertEqual(CarouselTextExtractor.combine([]), "")
+    }
+}
+
 /// The in-app Instagram caption path: pull the shortcode from the URL, parse Instagram's
 /// JSON (both response shapes) into a caption, and feed that caption to the structured
 /// parser so an obvious recipe caption actually extracts. Network calls aren't exercised —

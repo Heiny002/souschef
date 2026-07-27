@@ -77,6 +77,7 @@
 		FEED0000000000000000EC01 /* ComponentSequencer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EC02 /* ComponentSequencer.swift */; };
 		FEED0000000000000000EE11 /* SocialTextFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EE12 /* SocialTextFilter.swift */; };
 		FEED0000000000000000BA11 /* PerplexitySearcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000BA12 /* PerplexitySearcher.swift */; };
+		FEED0000000000000000CE11 /* CarouselTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CE12 /* CarouselTextExtractor.swift */; };
 		FEED0000000000000000DE01 /* RecipeScaling.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000DE02 /* RecipeScaling.swift */; };
 		FEED0000000000000000EF11 /* ServingSizeInferrer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EF12 /* ServingSizeInferrer.swift */; };
 		A71D307287F47F12A1420796 /* TranscriptLLMValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9ACA7716EC503F142D4F8B /* TranscriptLLMValidator.swift */; };
@@ -117,6 +118,7 @@
 		FEED0000000000000000EC02 /* ComponentSequencer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentSequencer.swift; sourceTree = "<group>"; };
 		FEED0000000000000000EE12 /* SocialTextFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialTextFilter.swift; sourceTree = "<group>"; };
 		FEED0000000000000000BA12 /* PerplexitySearcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerplexitySearcher.swift; sourceTree = "<group>"; };
+		FEED0000000000000000CE12 /* CarouselTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarouselTextExtractor.swift; sourceTree = "<group>"; };
 		FEED0000000000000000DE02 /* RecipeScaling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeScaling.swift; sourceTree = "<group>"; };
 		FEED0000000000000000EF12 /* ServingSizeInferrer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServingSizeInferrer.swift; sourceTree = "<group>"; };
 		07D492E365A4AB46C47203BF /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
@@ -479,6 +481,7 @@
 				FEED0000000000000000EC02 /* ComponentSequencer.swift */,
 				FEED0000000000000000EE12 /* SocialTextFilter.swift */,
 				FEED0000000000000000BA12 /* PerplexitySearcher.swift */,
+				FEED0000000000000000CE12 /* CarouselTextExtractor.swift */,
 				82FF8F6B3A0D2953DB61A55C /* MicrodataExtractor.swift */,
 				D6E7F8091A2B3C4D5E6F7081 /* IngredientAnnotator.swift */,
 				7560654AFD354C4655DEEC21 /* MicroStepSplitter.swift */,
@@ -648,6 +651,7 @@
 				FEED0000000000000000EC01 /* ComponentSequencer.swift in Sources */,
 				FEED0000000000000000EE11 /* SocialTextFilter.swift in Sources */,
 				FEED0000000000000000BA11 /* PerplexitySearcher.swift in Sources */,
+				FEED0000000000000000CE11 /* CarouselTextExtractor.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* IngredientAnnotator.swift in Sources */,
 				9E4BF5BA4F11E86F358EF5FF /* MicroStepSplitter.swift in Sources */,
 				FEED0000000000000000AA01 /* StepSequencer.swift in Sources */,

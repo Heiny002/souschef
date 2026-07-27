@@ -38,6 +38,45 @@ enum ImageTextRecognizer {
         }
     }
 
+    /// Cheap "does this image carry text at all?" pass, for triaging a carousel before paying
+    /// for full recognition on every slide.
+    ///
+    /// `VNDetectTextRectanglesRequest` only locates text regions — it never reads characters —
+    /// so it costs a fraction of `VNRecognizeTextRequest`. A typical recipe carousel is one
+    /// hero food photo followed by a few text slides; this skips the photos.
+    ///
+    /// `minimumCoverage` is the share of the image that must be text-like. A little stray text
+    /// (a watermark, a logo, a handle burned into the corner) shouldn't qualify a slide as a
+    /// recipe page, but a genuine text slide covers a lot of the frame.
+    static func hasText(in image: UIImage, minimumCoverage: CGFloat = 0.02) async -> Bool {
+        guard let data = image.jpegData(compressionQuality: 0.8) ?? image.pngData() else {
+            return false
+        }
+        let orientation = CGImagePropertyOrientation(image.imageOrientation)
+
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let request = VNDetectTextRectanglesRequest()
+                request.reportCharacterBoxes = false
+
+                let handler = VNImageRequestHandler(data: data, orientation: orientation, options: [:])
+                do {
+                    try handler.perform([request])
+                    let boxes = (request.results as? [VNTextObservation]) ?? []
+                    // Normalized boxes, so areas sum toward 1.0 for a full frame of text.
+                    let coverage = boxes.reduce(CGFloat.zero) { sum, box in
+                        sum + (box.boundingBox.width * box.boundingBox.height)
+                    }
+                    continuation.resume(returning: coverage >= minimumCoverage)
+                } catch {
+                    // Vision failed rather than found nothing — let the caller try real OCR
+                    // instead of silently dropping a slide that might hold the recipe.
+                    continuation.resume(returning: true)
+                }
+            }
+        }
+    }
+
     /// Order recognized-text observations into lines. Vision's origin is bottom-left, so a
     /// larger normalized Y is higher on the page; group by row (within a small Y tolerance)
     /// and read left-to-right within a row.
