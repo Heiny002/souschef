@@ -8,6 +8,7 @@ enum WebPageFetcherError: LocalizedError {
     case timeout
     case httpError(statusCode: Int)
     case noData
+    case challengePage
 
     var errorDescription: String? {
         switch self {
@@ -18,6 +19,7 @@ enum WebPageFetcherError: LocalizedError {
         case .timeout:           return "The request timed out."
         case .httpError(let c):  return "HTTP error \(c)."
         case .noData:            return "No data received."
+        case .challengePage:     return "The site returned a bot-challenge page instead of the recipe."
         }
     }
 }
@@ -58,7 +60,9 @@ actor WebPageFetcher {
     /// Fetch HTML from the given URL. Rejects non-https, loopback/LAN/reserved hosts, and
     /// responses larger than `maxBytes`; re-validates every redirect hop.
     func fetch(urlString: String) async throws -> String {
-        guard let url = URL(string: urlString) else {
+        // Upgrade a bare http:// recipe link to https rather than rejecting it — the SSRF
+        // guard is https-only, and most sites redirect http→https anyway.
+        guard let url = URL(string: Self.upgradedToHTTPS(urlString)) else {
             throw WebPageFetcherError.invalidURL
         }
         guard Self.isAllowed(url) else {
@@ -101,7 +105,33 @@ actor WebPageFetcher {
         guard let html = String(data: data, encoding: encoding) ?? String(data: data, encoding: .isoLatin1) else {
             throw WebPageFetcherError.noData
         }
+        // A Cloudflare / consent interstitial isn't the recipe — return a typed error so the
+        // failure UI can say the site blocked us, rather than feeding the parser junk.
+        if Self.isChallengePage(html) {
+            throw WebPageFetcherError.challengePage
+        }
         return html
+    }
+
+    /// Upgrade an http:// URL to https, dropping an explicit `:80`. Other schemes and https
+    /// URLs are returned unchanged. Pure + testable.
+    nonisolated static func upgradedToHTTPS(_ urlString: String) -> String {
+        guard let url = URL(string: urlString), url.scheme?.lowercased() == "http",
+              var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return urlString }
+        comps.scheme = "https"
+        if comps.port == 80 { comps.port = nil }
+        return comps.url?.absoluteString ?? urlString
+    }
+
+    /// True when HTML is a bot-challenge / consent interstitial rather than page content.
+    nonisolated static func isChallengePage(_ html: String) -> Bool {
+        let markers = [
+            "just a moment", "checking your browser", "cf-browser-verification", "cf_chl_",
+            "__cf_chl", "attention required! | cloudflare", "ddos protection by",
+            "enable javascript and cookies to continue", "verifying you are human",
+        ]
+        let head = html.prefix(4000).lowercased()
+        return markers.contains { head.contains($0) }
     }
 
     // MARK: - SSRF scheme/host validation

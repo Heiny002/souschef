@@ -90,4 +90,24 @@ final class CrashHardeningTests: XCTestCase {
         XCTAssertFalse(allowed("https://[::1]/x"))
         XCTAssertFalse(allowed("https://example.com:8443/x"), "non-standard port")
     }
+
+    // MARK: - Fetch hardening (think-tank branch 15)
+
+    func testHTTPUpgradedToHTTPS() {
+        XCTAssertEqual(WebPageFetcher.upgradedToHTTPS("http://blog.example.com/recipe"),
+                       "https://blog.example.com/recipe")
+        XCTAssertEqual(WebPageFetcher.upgradedToHTTPS("http://blog.example.com:80/recipe"),
+                       "https://blog.example.com/recipe", "explicit :80 is dropped")
+        XCTAssertEqual(WebPageFetcher.upgradedToHTTPS("https://blog.example.com/recipe"),
+                       "https://blog.example.com/recipe", "https unchanged")
+    }
+
+    func testChallengePageDetected() {
+        XCTAssertTrue(WebPageFetcher.isChallengePage(
+            "<html><head><title>Just a moment...</title></head><body>Checking your browser</body></html>"))
+        XCTAssertTrue(WebPageFetcher.isChallengePage(
+            "<html><body>Attention Required! | Cloudflare</body></html>"))
+        XCTAssertFalse(WebPageFetcher.isChallengePage(
+            "<html><body><h1>Grandma's Cornbread</h1><ul><li>1 cup cornmeal</li></ul></body></html>"))
+    }
 }

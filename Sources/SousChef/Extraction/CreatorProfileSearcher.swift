@@ -95,7 +95,11 @@ enum CreatorProfileSearcher {
         return await withTaskGroup(of: (String, Bool).self) { group in
             for urlString in candidates {
                 group.addTask {
-                    guard let url = URL(string: urlString) else { return (urlString, false) }
+                    // The handle is interpolated into these URLs, so a crafted handle could
+                    // aim a request at an internal host — gate every probe behind the SSRF guard.
+                    guard let url = URL(string: urlString), WebPageFetcher.isAllowed(url) else {
+                        return (urlString, false)
+                    }
                     var req = URLRequest(url: url)
                     req.httpMethod = "HEAD"
                     req.timeoutInterval = 5

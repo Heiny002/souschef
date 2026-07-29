@@ -78,6 +78,9 @@ enum CarouselTextExtractor {
     // MARK: - Download
 
     private static func downloadImage(_ url: URL) async -> UIImage? {
+        // These URLs come from parsed Instagram/TikTok JSON — attacker-influenceable — so
+        // they pass the same SSRF guard as web fetches before any request is made.
+        guard WebPageFetcher.isAllowed(url) else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
         // Instagram's CDN serves images without auth, but wants a browser-ish UA.
