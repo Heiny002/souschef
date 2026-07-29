@@ -264,4 +264,45 @@ final class IngredientParserTests: XCTestCase {
         XCTAssertEqual(r.unit, "gram")
         XCTAssertEqual(r.item, "butter")
     }
+
+    // MARK: - Range grammar (think-tank branch 9)
+
+    func testRangeWithToWord() {
+        let r = parser.parse(raw: "2 to 3 cups flour")
+        XCTAssertEqual(r.quantity, "2-3")
+        XCTAssertEqual(r.item, "flour")
+    }
+
+    func testRangeWithSpacedDash() {
+        XCTAssertEqual(parser.parse(raw: "2 - 3 cups flour").quantity, "2-3")
+    }
+
+    func testRangeWithOrWord() {
+        XCTAssertEqual(parser.parse(raw: "4 or 5 tomatoes").quantity, "4-5")
+    }
+
+    func testMixedNumberRange() {
+        let r = parser.parse(raw: "1 1/2 - 2 cups milk")
+        XCTAssertEqual(r.quantity, "1 1/2-2")
+        XCTAssertEqual(r.item, "milk")
+    }
+
+    func testUnicodeFractionRange() {
+        XCTAssertEqual(parser.parse(raw: "1½–2 cups broth").quantity, "1 1/2-2")
+    }
+
+    func testConnectiveOfIsStripped() {
+        XCTAssertEqual(parser.parse(raw: "2 cups of flour").item, "flour")
+        XCTAssertEqual(parser.parse(raw: "1 cup of milk").item, "milk")
+    }
+
+    func testEmittedRangesScaleThroughQuantity() {
+        // The parser emits the range; RecipeScaling.Quantity already reads every form.
+        let q = Quantity.parse(quantity: parser.parse(raw: "1.5 to 2 cups broth").quantity, unit: "cup")
+        XCTAssertEqual(q?.low, 1.5)
+        XCTAssertEqual(q?.high, 2)
+        let m = Quantity.parse(quantity: parser.parse(raw: "1 1/2 - 2 cups milk").quantity, unit: "cup")
+        XCTAssertEqual(m?.low, 1.5)
+        XCTAssertEqual(m?.high, 2)
+    }
 }

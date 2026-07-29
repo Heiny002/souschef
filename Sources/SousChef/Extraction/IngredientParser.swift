@@ -43,6 +43,14 @@ struct IngredientParser {
         result.unit = unit
         remainder = afterUnit.trimmingCharacters(in: .whitespaces)
 
+        // 3b. Drop a connective "of" left once the amount/unit are gone: "2 cups of flour" →
+        // "flour". Only when an amount or unit was actually found, so a real item that starts
+        // with "of" (rare, but "offal") isn't truncated.
+        if qty != nil || unit != nil,
+           let r = remainder.range(of: #"^of\s+"#, options: [.regularExpression, .caseInsensitive]) {
+            remainder = String(remainder[r.upperBound...])
+        }
+
         // 4. Extract preparation (trailing comma phrase or parenthetical)
         let (item, prep) = extractPreparation(from: remainder)
         result.item = item.trimmingCharacters(in: .whitespaces)
@@ -78,79 +86,62 @@ struct IngredientParser {
         pattern: #"(?<=\d)\s*[–—−]\s*(?=\d)"#
     )
 
+    /// The leading numeric quantity of a line, as a single span. A scalar is a mixed number
+    /// ("1 1/2"), a fraction ("1/2"), or an int/decimal ("2", "2.5"); a range is two scalars
+    /// joined by a dash / "to" / "or". Matched against the whole normalized line BEFORE
+    /// whitespace tokenization, so "2 to 3", "2 - 3", and "1 1/2 - 2" all come out whole
+    /// instead of the parser truncating at the first number.
+    private static let leadingQuantity: NSRegularExpression? = {
+        let scalar = #"\d+\s+\d+/\d+|\d+/\d+|\d+(?:\.\d+)?"#
+        let sep = #"\s*(?:to|or|-)\s*"#
+        return try? NSRegularExpression(
+            pattern: "^\\s*((?:\(scalar))(?:\(sep)(?:\(scalar)))?)",
+            options: .caseInsensitive)
+    }()
+
     private func extractQuantity(from text: String) -> (String?, String) {
         var s = text
-        // Normalize unicode fractions
+        // Normalize unicode fractions and typographic range dashes to ASCII forms.
         for (char, replacement) in Self.unicodeFractions {
             s = s.replacingOccurrences(of: String(char), with: " " + replacement + " ")
         }
         if let dashRegex = Self.typographicRangeDash {
             s = dashRegex.stringByReplacingMatches(
-                in: s, range: NSRange(s.startIndex..., in: s), withTemplate: "-"
-            )
+                in: s, range: NSRange(s.startIndex..., in: s), withTemplate: "-")
         }
-        s = s.trimmingCharacters(in: .whitespaces)
+        s = s.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+             .trimmingCharacters(in: .whitespaces)
 
-        // Pattern: optional range like "2-3", mixed number "1 1/2", fraction "1/2", decimal "2.5", whole number "2"
-        // Also handles word numbers like "one", "a"
-        let tokens = s.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-        guard let first = tokens.first else { return (nil, text) }
-
-        // Word number
-        if let wordVal = Self.wordNumbers[first.lowercased()] {
-            // Check for following fraction (e.g., "one and a half")
+        // Word number at the very start ("one", "a", "half", "two").
+        let firstToken = s.split(separator: " ").first.map(String.init) ?? ""
+        if let wordVal = Self.wordNumbers[firstToken.lowercased()] {
             let quantityStr = wordVal == Double(Int(wordVal)) ? String(Int(wordVal)) : String(wordVal)
-            let rest = tokens.dropFirst().joined(separator: " ")
+            let rest = String(s.dropFirst(firstToken.count)).trimmingCharacters(in: .whitespaces)
             return (quantityStr, rest)
         }
 
-        // Try to parse a numeric quantity from the start
-        var quantityParts: [String] = []
-        var tokenIndex = 0
-
-        while tokenIndex < tokens.count {
-            let token = tokens[tokenIndex]
-            if isNumericToken(token) {
-                quantityParts.append(token)
-                tokenIndex += 1
-                // Check if next token is a fraction (handles "1 1/2")
-                if tokenIndex < tokens.count, isFraction(tokens[tokenIndex]) {
-                    quantityParts.append(tokens[tokenIndex])
-                    tokenIndex += 1
-                }
-                break
-            } else if token == "-" && !quantityParts.isEmpty {
-                // Range separator
-                quantityParts.append(token)
-                tokenIndex += 1
-            } else {
-                break
-            }
+        // Leading numeric span (scalar or range), matched whole.
+        guard let regex = Self.leadingQuantity,
+              let match = regex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
+              let full = Range(match.range(at: 1), in: s) else {
+            return (nil, text)
         }
-
-        if quantityParts.isEmpty { return (nil, text) }
-
-        let quantity = quantityParts.joined(separator: " ")
-        let rest = tokens[tokenIndex...].joined(separator: " ")
-        return (quantity, rest)
+        let raw = String(s[full])
+        // Drop a dangling separator the grammar left when a range's second operand was
+        // absent ("1- cup sugar" → quantity "1", rest "cup sugar", not "- cup sugar").
+        let rest = String(s[full.upperBound...])
+            .replacingOccurrences(of: #"^[-–—\s]+"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        return (Self.canonicalQuantity(raw), rest)
     }
 
-    private func isNumericToken(_ s: String) -> Bool {
-        if s.allSatisfy({ $0.isNumber }) { return true }
-        if isFraction(s) { return true }
-        if let _ = Double(s) { return true }
-        // Range: "2-3". Both sides must be non-empty — "1-" used to pass because
-        // "".allSatisfy is vacuously true, producing the unscalable quantity "1-".
-        if s.contains("-") {
-            let parts = s.components(separatedBy: "-")
-            return parts.count == 2 && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy { $0.isNumber } }
-        }
-        return false
-    }
-
-    private func isFraction(_ s: String) -> Bool {
-        let parts = s.components(separatedBy: "/")
-        return parts.count == 2 && parts.allSatisfy { $0.allSatisfy { $0.isNumber } }
+    /// Collapse a captured quantity span's range separators to a bare hyphen so
+    /// RecipeScaling.Quantity.parseValue reads the range ("2 to 3" → "2-3"). The span holds
+    /// only scalars and separators — no item words — so this can't touch an ingredient name.
+    static func canonicalQuantity(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: #"\s*(?:to|or|-)\s*"#, with: "-",
+                                  options: [.regularExpression, .caseInsensitive])
     }
 
     // MARK: - Unit Extraction

@@ -441,13 +441,14 @@ final class ExtractionCharacterizationTests: XCTestCase {
 
     // MARK: - Ingredient parsing
 
-    func testDanglingDashYieldsNoQuantityInsteadOfGarbage() {
-        // "1-" used to pass the numeric-range check (empty right side vacuously satisfied
-        // allSatisfy) and became the unscalable quantity string "1-". Malformed input now
-        // yields no quantity; the raw text is preserved for ReviewView.
+    func testDanglingDashRecoversTheNumberNotGarbage() {
+        // "1-" used to become the unscalable quantity string "1-". The range grammar now
+        // recovers the leading number and drops the dangling dash: a clean "1 cup sugar".
         let p = IngredientParser().parse(raw: "1- cup sugar")
-        XCTAssertNil(p.quantity)
-        XCTAssertEqual(p.rawText, "1- cup sugar")
+        XCTAssertEqual(p.quantity, "1")
+        XCTAssertNotEqual(p.quantity, "1-", "the unscalable garbage form must never return")
+        XCTAssertEqual(p.unit, "cup")
+        XCTAssertEqual(p.item, "sugar")
     }
 
     func testRealRangesStillParse() {
