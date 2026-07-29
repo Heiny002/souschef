@@ -135,10 +135,17 @@ enum SocialTextFilter {
 
     /// Clean one line: nil to drop it, "" for a blank line (kept so paragraph structure — and
     /// therefore header detection — survives), otherwise the line minus its trailing tag run.
-    static func cleanLine(_ line: String) -> String? {
+    ///
+    /// `includePhrases` gates the CTA/narrative phrase condemnation. It is ON when filtering an
+    /// INPUT caption (invariant: filter inputs), and OFF when cleaning extractor/LLM OUTPUT —
+    /// a web page or a structured LLM result has no social CTAs, and the phrase filter there
+    /// deletes real instructions that merely open with a marketing-sounding phrase ("When
+    /// you're ready to serve, slice against the grain"). Tag-wall / trailing-tag stripping
+    /// always runs.
+    static func cleanLine(_ line: String, includePhrases: Bool = true) -> String? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { return "" }
-        if isNoiseLine(trimmed) { return nil }
+        if isNoiseLine(trimmed, includePhrases: includePhrases) { return nil }
         let stripped = stripTrailingTags(trimmed)
         // Stripping emptied it → it was a tag wall after all; drop rather than emit a blank.
         return stripped.isEmpty ? nil : stripped
@@ -147,18 +154,21 @@ enum SocialTextFilter {
     /// Clean one extracted field — an ingredient or a step, which may be several lines when it
     /// carries a bulleted list. nil when nothing survives. This is the guard every extractor's
     /// OUTPUT should pass through, so noise can't reach a recipe even from text we never cleaned
-    /// on the way in (the LLM receives the raw caption by design).
-    static func cleanEntry(_ text: String) -> String? {
+    /// on the way in (the LLM receives the raw caption by design). Pass `includePhrases: false`
+    /// for web / LLM output, where the phrase filter causes false deletions.
+    static func cleanEntry(_ text: String, includePhrases: Bool = true) -> String? {
         let kept = text.components(separatedBy: .newlines).compactMap { line -> String? in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            return trimmed.isEmpty ? nil : cleanLine(trimmed)
+            return trimmed.isEmpty ? nil : cleanLine(trimmed, includePhrases: includePhrases)
         }
         let joined = kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return joined.isEmpty ? nil : joined
     }
 
-    /// True when a caption line is social noise rather than recipe content.
-    static func isNoiseLine(_ line: String) -> Bool {
+    /// True when a caption line is social noise rather than recipe content. Structural noise
+    /// (tag walls, emoji-only decoration) is always caught; the CTA/narrative phrase match is
+    /// gated on `includePhrases` so it only runs on input captions, not extractor output.
+    static func isNoiseLine(_ line: String, includePhrases: Bool = true) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return false }   // blank lines preserve structure
 
@@ -168,6 +178,8 @@ enum SocialTextFilter {
 
         // Emoji/punctuation-only decoration lines.
         if !trimmed.contains(where: { $0.isLetter || $0.isNumber }) { return true }
+
+        guard includePhrases else { return false }   // output cleaning: structural noise only
 
         // Phrase-match against the line with tag runs removed from BOTH ends and leading emoji
         // dropped — CTAs are routinely decorated ("💾 Save this!") or tagged ("#easyrecipes
@@ -207,15 +219,21 @@ enum SocialTextFilter {
     /// it. Applied at the pipeline boundary so results from the LLM (which is sent the RAW
     /// caption by design), the transcript validator, and the web-search fallbacks are all
     /// covered by one pass. A clean recipe passes through unchanged.
+    ///
+    /// The CTA/narrative phrase filter runs only on `.social` results. Web pages and
+    /// structured LLM output don't carry social CTAs, and applying the phrase filter to them
+    /// deletes real instructions ("When you're ready to serve…") — invariant I2: filter
+    /// inputs, not outputs. Tag-wall / trailing-tag stripping still runs for every source.
     static func sanitize(_ result: ExtractionResult) -> ExtractionResult {
+        let includePhrases = result.producedBy == .social
         var out = result
         out.title = cleanTitle(result.title)
         out.ingredients = result.ingredients.compactMap { ingredient in
-            guard let text = cleanEntry(ingredient.text) else { return nil }
+            guard let text = cleanEntry(ingredient.text, includePhrases: includePhrases) else { return nil }
             return RawIngredient(text: text, section: ingredient.section)
         }
         out.steps = result.steps.compactMap { step -> RawStep? in
-            guard let text = cleanEntry(step.text) else { return nil }
+            guard let text = cleanEntry(step.text, includePhrases: includePhrases) else { return nil }
             return RawStep(order: step.order, text: text, section: step.section)
         }
         // Re-number so a dropped step doesn't leave a gap in the sequence.
@@ -223,5 +241,24 @@ enum SocialTextFilter {
             RawStep(order: idx + 1, text: step.text, section: step.section)
         }
         return out
+    }
+
+    // MARK: - Numeric grounding (anti-hallucination)
+
+    /// The numeric tokens in a string: runs of digits, decimals, and fractions. Used to check
+    /// that an LLM-produced quantity actually appeared in the caption it was structuring.
+    static func numericTokens(_ text: String) -> Set<String> {
+        guard let re = try? NSRegularExpression(pattern: #"\d+(?:[.,]\d+)?(?:/\d+)?"#) else { return [] }
+        let ns = text as NSString
+        return Set(re.matches(in: text, range: NSRange(location: 0, length: ns.length))
+            .map { ns.substring(with: $0.range) })
+    }
+
+    /// True when every number in `text` also appears somewhere in `inputNumbers` — i.e. the
+    /// LLM didn't invent a quantity the caption never contained. Number-free text is grounded
+    /// by definition ("salt to taste"). Membership is over the WHOLE caption, so this only
+    /// rejects genuine fabrications, never a number that merely moved.
+    static func numbersGrounded(_ text: String, in inputNumbers: Set<String>) -> Bool {
+        numericTokens(text).isSubset(of: inputNumbers)
     }
 }

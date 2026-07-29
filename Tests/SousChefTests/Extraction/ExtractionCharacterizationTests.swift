@@ -317,6 +317,54 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a comment, and I'll DM the recipe"))
     }
 
+    // MARK: - Source-aware sanitize + numeric grounding (think-tank branch 11)
+
+    func testWebResultKeepsPhraseOpeningInstruction() {
+        var r = ExtractionResult(extractionMethod: "heuristic-html")
+        r.producedBy = .web
+        r.title = "Steak"
+        r.ingredients = [RawIngredient(text: "1 lb steak")]
+        r.steps = [RawStep(order: 1, text: "When you're ready to serve, slice against the grain.")]
+        let out = SocialTextFilter.sanitize(r)
+        XCTAssertEqual(out.steps.first?.text, "When you're ready to serve, slice against the grain.",
+                       "a web instruction opening with a phrase must survive (invariant I2)")
+    }
+
+    func testSocialResultStillDropsCTAStep() {
+        var r = ExtractionResult(extractionMethod: "pasted-text")   // default .social
+        r.title = "Steak"
+        r.ingredients = [RawIngredient(text: "1 lb steak")]
+        r.steps = [RawStep(order: 1, text: "Sear the steak."),
+                   RawStep(order: 2, text: "Follow for more easy recipes")]
+        let out = SocialTextFilter.sanitize(r)
+        XCTAssertEqual(out.steps.map(\.text), ["Sear the steak."], "social CTA is still filtered")
+    }
+
+    func testWebSanitizeStillStripsTrailingTags() {
+        var r = ExtractionResult(extractionMethod: "heuristic-html")
+        r.producedBy = .web
+        r.title = "X"
+        r.ingredients = [RawIngredient(text: "2 eggs")]
+        r.steps = [RawStep(order: 1, text: "Bake 20 minutes #easy #dinner")]
+        let out = SocialTextFilter.sanitize(r)
+        XCTAssertEqual(out.steps.first?.text, "Bake 20 minutes", "tag stripping runs for every source")
+    }
+
+    func testNumericGroundingDropsFabricatedQuantities() {
+        let caption = "Toast 2 slices of bread. Bake at 350."
+        let json = #"{"title":"Toast","ingredients":[{"text":"2 slices bread"},{"text":"1 cup sugar"}],"steps":["Toast it."]}"#
+        let r = LLMCaptionStructurer.recipe(fromModelText: json, groundedIn: caption)
+        XCTAssertEqual(r?.ingredients.map(\.text), ["2 slices bread"],
+                       "'1 cup sugar' — a quantity the caption never had — is dropped")
+    }
+
+    func testNumericGroundingKeepsGroundedAndNumberFreeItems() {
+        let caption = "Add 2 cups flour and a pinch of salt."
+        let json = #"{"title":"Dough","ingredients":[{"text":"2 cups flour"},{"text":"salt to taste"}],"steps":["Mix."]}"#
+        let r = LLMCaptionStructurer.recipe(fromModelText: json, groundedIn: caption)
+        XCTAssertEqual(r?.ingredients.count, 2, "grounded number and number-free item both kept")
+    }
+
     // MARK: - Truncation honesty (think-tank branch 10)
 
     func testEntityDecoderHandlesEllipsisForms() {

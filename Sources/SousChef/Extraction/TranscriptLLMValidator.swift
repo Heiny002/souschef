@@ -142,11 +142,15 @@ actor TranscriptLLMValidator {
 
         var result = partial
         result.extractionMethod = method
+        // LLM-touched output: the pipeline's boundary sanitize must not re-apply the
+        // CTA/narrative phrase filter to it (invariant I2) after this path already tag-cleaned.
+        result.producedBy = .llmStructured
 
-        // Everything the model returns is filtered: this path had no guard at all, so a
-        // hashtag wall came straight back as a step.
+        // Everything the model returns is filtered for tag walls: this path had no guard at
+        // all, so a hashtag wall came straight back as a step. includePhrases:false — this is
+        // LLM output, so the CTA/narrative phrase filter would delete real instructions.
         func clean(_ values: [String]) -> [String] {
-            values.compactMap { SocialTextFilter.cleanEntry($0) }
+            values.compactMap { SocialTextFilter.cleanEntry($0, includePhrases: false) }
         }
 
         if primary {

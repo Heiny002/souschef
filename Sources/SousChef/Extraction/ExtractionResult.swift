@@ -1,5 +1,14 @@
 import Foundation
 
+/// Where a result's text came from — governs how aggressively the output-side noise filter
+/// runs. Social captions carry CTAs and hashtags; web pages and structured LLM output do not,
+/// so the phrase filter must not run on them (it deletes real instructions there).
+enum ContentSource: Sendable {
+    case social         // Instagram/TikTok/YouTube caption or transcript
+    case web            // a recipe web page (Schema.org / microdata / heuristic / text pass)
+    case llmStructured  // structured by the LLM caption structurer
+}
+
 /// A partially or fully extracted recipe from one layer of the extraction chain.
 struct ExtractionResult: Sendable {
     var title: String?
@@ -25,6 +34,7 @@ struct ExtractionResult: Sendable {
     var authorHint: String?              // creator name/handle for failure UI copy
     var debugInfo: String?               // testing aid: which fetch routes ran + what they returned
     var wasTruncated: Bool = false       // caption arrived cut off (trailing "…"); show a banner
+    var producedBy: ContentSource = .social  // gates output-side phrase filtering (invariant I2)
 
     init(extractionMethod: String) {
         self.ingredients = []

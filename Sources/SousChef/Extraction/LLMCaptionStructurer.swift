@@ -69,7 +69,7 @@ actor LLMCaptionStructurer {
             throw LLMCaptionError.malformedResponse
         }
 
-        guard var result = Self.recipe(fromModelText: text) else {
+        guard var result = Self.recipe(fromModelText: text, groundedIn: caption) else {
             throw LLMCaptionError.malformedResponse
         }
         if result.title == nil { result.title = titleHint }
@@ -141,7 +141,7 @@ actor LLMCaptionStructurer {
 
     /// Parse the model's text response (possibly fenced / prose-wrapped) into a result.
     /// Returns nil only when no JSON object can be recovered.
-    nonisolated static func recipe(fromModelText text: String) -> ExtractionResult? {
+    nonisolated static func recipe(fromModelText text: String, groundedIn input: String? = nil) -> ExtractionResult? {
         let jsonText = JSONResponseParser.extractObject(from: text)
         guard let jsonData = jsonText.data(using: .utf8),
               let dict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
@@ -149,6 +149,7 @@ actor LLMCaptionStructurer {
         }
 
         var result = ExtractionResult(extractionMethod: method)
+        result.producedBy = .llmStructured
         // A model that ignores the prompt must not be able to smuggle engagement text into
         // the title — the filter is the backstop, the prompt is the request.
         result.title = SocialTextFilter.cleanTitle((dict["title"] as? String)?.nonEmpty)
@@ -162,13 +163,15 @@ actor LLMCaptionStructurer {
             // cleanEntry rather than a plain isNoiseLine reject: "2 peaches @traderjoes" isn't
             // noise, but it shouldn't keep the mention either — it's kept and cleaned.
             result.ingredients = raw.compactMap { item -> RawIngredient? in
+                // includePhrases:false — LLM output isn't social noise; the phrase filter here
+                // deletes real instructions that open with a marketing-sounding phrase.
                 if let obj = item as? [String: Any] {
                     guard let raw = (obj["text"] as? String)?.nonEmpty,
-                          let text = SocialTextFilter.cleanEntry(raw) else { return nil }
+                          let text = SocialTextFilter.cleanEntry(raw, includePhrases: false) else { return nil }
                     return RawIngredient(text: text, section: (obj["section"] as? String)?.nonEmpty)
                 }
                 if let raw = (item as? String)?.nonEmpty,
-                   let text = SocialTextFilter.cleanEntry(raw) {
+                   let text = SocialTextFilter.cleanEntry(raw, includePhrases: false) {
                     return RawIngredient(text: text, section: nil)
                 }
                 return nil
@@ -182,27 +185,36 @@ actor LLMCaptionStructurer {
             var steps: [RawStep] = []
             for item in rawSteps {
                 if let obj = item as? [String: Any] {
-                    // Drop hashtag walls / CTAs the model let through — a recipe's last step
-                    // must never be "#easyrecipes #summerfood" — and clean the ones that carry
-                    // a trailing tag onto otherwise-real text.
+                    // Strip hashtag walls / trailing tags the model let through, but NOT the
+                    // CTA/narrative phrase filter (includePhrases:false) — it deletes real
+                    // steps that open "When you're ready to serve…".
                     guard let rawText = (obj["text"] as? String)?.nonEmpty,
-                          let text = SocialTextFilter.cleanEntry(rawText) else { continue }
-                    // The bullets were the one unfiltered path: a tag here was concatenated
-                    // into the step body unchecked.
+                          let text = SocialTextFilter.cleanEntry(rawText, includePhrases: false) else { continue }
                     let bullets = ((obj["items"] as? [Any]) ?? [])
                         .compactMap { ($0 as? String)?.nonEmpty }
-                        .compactMap { SocialTextFilter.cleanEntry($0) }
+                        .compactMap { SocialTextFilter.cleanEntry($0, includePhrases: false) }
                     let body = bullets.isEmpty
                         ? text
                         : text + "\n" + bullets.map { "• \($0)" }.joined(separator: "\n")
                     steps.append(RawStep(order: steps.count + 1, text: body,
                                          section: (obj["section"] as? String)?.nonEmpty))
                 } else if let rawText = (item as? String)?.nonEmpty,
-                          let text = SocialTextFilter.cleanEntry(rawText) {
+                          let text = SocialTextFilter.cleanEntry(rawText, includePhrases: false) {
                     steps.append(RawStep(order: steps.count + 1, text: text))
                 }
             }
             result.steps = steps
+        }
+
+        // Anti-hallucination: when the source caption is known, drop any ingredient whose
+        // quantity the caption never contained — the model invented it. Number-free
+        // ingredients ("salt to taste") always pass. Steps are left intact: a fabricated
+        // timer is far less harmful than losing a real instruction.
+        if let input {
+            let inputNumbers = SocialTextFilter.numericTokens(input)
+            result.ingredients = result.ingredients.filter {
+                SocialTextFilter.numbersGrounded($0.text, in: inputNumbers)
+            }
         }
 
         // Union the model's explicit equipment list with keyword detection: the model catches

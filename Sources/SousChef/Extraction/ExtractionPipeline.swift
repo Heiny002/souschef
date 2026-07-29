@@ -555,6 +555,9 @@ actor ExtractionPipeline {
         }
 
         result.recipePageURL = urlString
+        // Web pages carry no social CTAs; tag the source so the boundary sanitize skips the
+        // phrase filter that would delete real instructions ("When you're ready to serve…").
+        result.producedBy = .web
         // Multi-part web recipes (HowToSection / "For the sauce:" groups) get the same
         // longest-component-first ordering the video path applies, so the cook sees the
         // suggested part order on the review screen for web imports too.
