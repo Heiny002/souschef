@@ -592,6 +592,20 @@ actor ExtractionPipeline {
             return layer3
         }
 
+        // Layer 3.5: block-preserved plain-text pass. Old blogs / newsletters / forum posts
+        // format recipes as paragraphs with no recipe-plugin markup, so layers 1–3 find
+        // nothing — but the text parses trivially once its line structure is preserved.
+        // Extract structure-preserving text and run the paste parser (the best textual
+        // parser in the app), then keep it only if it beats what the layers produced. This
+        // is the lever that keeps paragraph-formatted pages off the paid LLM fallback.
+        let domText = DOMTextExtractor.extractText(html: html)
+        if domText.count >= 40 {
+            var textParse = PastedTextExtractor().extract(text: domText)
+            textParse = merge(base: layer3, onto: textParse)
+            if textParse.confidence >= ConfidenceThreshold.reject { return textParse }
+            return [layer1, layer2, layer3, textParse].max(by: { $0.confidence < $1.confidence }) ?? layer3
+        }
+
         // Layer 4 (LLM fallback) runs in the async web path — see extractFromWebPage — because
         // the Claude call is async and this synchronous entry point is also used directly by tests.
 

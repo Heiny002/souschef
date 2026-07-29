@@ -317,6 +317,47 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a comment, and I'll DM the recipe"))
     }
 
+    // MARK: - Plain-web text pass (think-tank branch 8)
+
+    func testDOMTextExtractorPreservesLineBreaks() {
+        let html = """
+        <html><body><article>
+        <h1>Title</h1>
+        <p>1 cup flour<br>2 eggs<br>1 tsp salt</p>
+        <p>Mix everything.</p>
+        <p>Bake at 350.</p>
+        </article></body></html>
+        """
+        let text = DOMTextExtractor.extractText(html: html)
+        let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
+        XCTAssertTrue(lines.contains("1 cup flour"), "a <br> is a line break")
+        XCTAssertTrue(lines.contains("2 eggs"))
+        XCTAssertTrue(lines.contains("Mix everything."))
+        XCTAssertTrue(lines.contains("Bake at 350."))
+    }
+
+    func testParagraphBlogParsesViaTextPassWithThumbnail() async {
+        // No JSON-LD, no microdata, no recipe-plugin classes — the layers 1–3 find nothing,
+        // but the block-preserved text pass parses it and carries the og:image through.
+        let html = """
+        <html><head><title>Aunt May's Cornbread</title>
+        <meta property="og:image" content="https://blog.example.com/cornbread.jpg"></head>
+        <body><article>
+        <h1>Aunt May's Cornbread</h1>
+        <p>Ingredients:</p>
+        <p>1 cup cornmeal<br>1 cup flour<br>2 eggs<br>1 cup milk</p>
+        <p>Instructions:</p>
+        <p>Mix the dry ingredients.<br>Whisk in the eggs and milk.<br>Bake at 400 for 20 minutes.</p>
+        </article></body></html>
+        """
+        let r = await ExtractionPipeline().extractFromHTML(html: html)
+        XCTAssertTrue(r.isViable, "paragraph blog should parse without the LLM")
+        XCTAssertEqual(r.ingredients.count, 4)
+        XCTAssertEqual(r.steps.count, 3)
+        XCTAssertEqual(r.thumbnailURL, "https://blog.example.com/cornbread.jpg",
+                       "og:image survives the text-pass merge")
+    }
+
     // MARK: - Structurer skip-gate (think-tank branch 3)
 
     /// The modal clean recipe post: unique headers, quantity-led ingredients, no mess.

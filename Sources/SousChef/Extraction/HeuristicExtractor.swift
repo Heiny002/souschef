@@ -34,8 +34,18 @@ struct HeuristicExtractor {
         result.appliances = ApplianceDetector.detect(
             in: result.ingredients.map { $0.text } + result.steps.map { $0.text }
         )
+        result.thumbnailURL = Self.ogImage(doc: doc)
         result.confidence = computeConfidence(result)
         return result
+    }
+
+    /// The og:image link-preview photo — the one image a plain blog reliably exposes, so a
+    /// heuristic-parsed recipe still gets a thumbnail.
+    static func ogImage(doc: Document) -> String? {
+        guard let els = try? doc.select("meta[property=og:image]"), let el = els.first(),
+              let content = try? el.attr("content") else { return nil }
+        let t = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
     }
 
     // MARK: - Title
@@ -98,7 +108,10 @@ struct HeuristicExtractor {
         // Leading char class includes the unicode fractions — "½ cup flour" previously
         // required an ASCII digit first and was silently missed (audit medium).
         if let allLis = try? doc.select("li") {
-            let quantityPattern = #"^\s*([\d½¼¾⅓⅔⅛⅜⅝⅞][\d\s/½¼¾⅓⅔⅛⅜⅝⅞]*|[a-z]+)\s+(tbsp|tsp|cup|oz|lb|g|kg|ml|can|bunch|clove|sprig|pinch|dash|tablespoon|teaspoon|ounce|pound|gram)"#
+            // The non-numeric quantity alternative is a word-number WHITELIST, not a bare
+            // [a-z]+ — that matched any lowercase word before a unit ("the cup", "some g")
+            // and pulled non-ingredient lines into the recipe.
+            let quantityPattern = #"^\s*([\d½¼¾⅓⅔⅛⅜⅝⅞][\d\s/½¼¾⅓⅔⅛⅜⅝⅞]*|a|an|one|two|three|four|five|six|seven|eight|nine|ten|half|quarter|dozen)\s+(tbsp|tsp|cup|oz|lb|g|kg|ml|can|bunch|clove|sprig|pinch|dash|tablespoon|teaspoon|ounce|pound|gram)"#
             let regex = try? NSRegularExpression(pattern: quantityPattern, options: .caseInsensitive)
             let matches = allLis.filter { el in
                 guard let text = try? el.text() else { return false }
