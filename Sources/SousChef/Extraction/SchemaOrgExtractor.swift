@@ -15,9 +15,8 @@ struct SchemaOrgExtractor {
         guard let scripts = try? doc.select("script[type=application/ld+json]") else { return result }
 
         for script in scripts {
-            guard let jsonText = try? script.html(),
-                  let data = jsonText.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) else { continue }
+            guard let jsonText = try? script.html(), !jsonText.isEmpty,
+                  let json = Self.parseJSON(jsonText) else { continue }
 
             // Could be a single object, an array, or a @graph wrapper.
             var candidates: [[String: Any]] = []
@@ -121,15 +120,15 @@ struct SchemaOrgExtractor {
         // Image / thumbnail — can be a String URL, ImageObject dict, or array of either
         if let imageVal = dict["image"] {
             if let imageStr = imageVal as? String {
-                result.thumbnailURL = imageStr
+                result.thumbnailURL = Self.normalizedImageURL(imageStr)
             } else if let imageObj = imageVal as? [String: Any] {
-                result.thumbnailURL = imageObj["url"] as? String
+                result.thumbnailURL = Self.normalizedImageURL(imageObj["url"] as? String)
             } else if let imageArr = imageVal as? [Any] {
                 // Array of strings or ImageObject dicts
                 for item in imageArr {
-                    if let str = item as? String { result.thumbnailURL = str; break }
+                    if let str = item as? String { result.thumbnailURL = Self.normalizedImageURL(str); break }
                     if let obj = item as? [String: Any], let url = obj["url"] as? String {
-                        result.thumbnailURL = url; break
+                        result.thumbnailURL = Self.normalizedImageURL(url); break
                     }
                 }
             }
@@ -181,9 +180,11 @@ struct SchemaOrgExtractor {
             return steps
         }
 
-        // Format 3: single string
+        // Format 3: single string — a blob of several sentences crammed into one field.
+        // Split it into atomic steps so Cook Mode isn't one wall of text.
         if let str = value as? String, !str.isEmpty {
-            return [RawStep(order: 1, text: str.htmlDecoded)]
+            let sentences = Self.splitInstructionBlob(str.htmlDecoded)
+            return sentences.enumerated().map { idx, text in RawStep(order: idx + 1, text: text) }
         }
 
         return []
@@ -223,6 +224,67 @@ struct SchemaOrgExtractor {
         if hasIngredients && hasSteps { return 0.9 }
         if result.ingredients.count >= 1 && result.steps.count >= 1 { return 0.6 }
         return 0.2
+    }
+
+    /// Resolve a protocol-relative image URL (`//cdn.example.com/x.jpg`) to https. A fully
+    /// relative path (`/photo.jpg`) can't be resolved here without the page URL, so it's
+    /// left as-is rather than guessed wrong. Returns nil for empty/absent input.
+    static func normalizedImageURL(_ url: String?) -> String? {
+        guard let url = url?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else { return nil }
+        if url.hasPrefix("//") { return "https:" + url }
+        return url
+    }
+
+    /// Parse a JSON-LD block, retrying once with a sanitized copy. Templated JSON-LD
+    /// frequently ships with trailing commas (`… "x",]`) that make it strictly invalid but
+    /// trivially recoverable — a whole recipe shouldn't be lost to one stray comma.
+    static func parseJSON(_ text: String) -> Any? {
+        if let data = text.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) {
+            return json
+        }
+        let cleaned = sanitizedJSON(text)
+        guard cleaned != text, let data = cleaned.data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data)
+    }
+
+    /// Strip trailing commas before `}`/`]` — the most common JSON-LD templating error.
+    static func sanitizedJSON(_ text: String) -> String {
+        guard let re = try? NSRegularExpression(pattern: #",(\s*[}\]])"#) else { return text }
+        return re.stringByReplacingMatches(
+            in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "$1")
+    }
+
+    /// Split a single-string instruction blob into atomic steps on sentence boundaries.
+    /// "Mix the dry. Beat in eggs. Bake 25 min." → three steps. Conservative on purpose:
+    /// it splits on terminal punctuation followed by a capital or digit (so "1.5 cups" and
+    /// "e.g. salt" don't split), on explicit newlines, and strips leading "1. " numbering.
+    static func splitInstructionBlob(_ blob: String) -> [String] {
+        let byLine = blob.components(separatedBy: .newlines)
+        var pieces: [String] = []
+        let boundary = try? NSRegularExpression(pattern: #"(?<=[.!?])\s+(?=[A-Z0-9])"#)
+        for line in byLine {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            guard let boundary else { pieces.append(trimmed); continue }
+            let ns = trimmed as NSString
+            var last = 0
+            var sentences: [String] = []
+            for m in boundary.matches(in: trimmed, range: NSRange(location: 0, length: ns.length)) {
+                sentences.append(ns.substring(with: NSRange(location: last, length: m.range.location - last)))
+                last = m.range.location + m.range.length
+            }
+            sentences.append(ns.substring(from: last))
+            pieces.append(contentsOf: sentences)
+        }
+        return pieces.compactMap { piece -> String? in
+            var s = piece.trimmingCharacters(in: .whitespaces)
+            if let r = s.range(of: #"^\d+[.)]\s*"#, options: .regularExpression) {
+                s = String(s[r.upperBound...])
+            }
+            s = s.trimmingCharacters(in: .whitespaces)
+            return s.count >= 3 ? s : nil
+        }
     }
 
     /// A short, quantity-free line ending in a colon reads as an ingredient-group heading

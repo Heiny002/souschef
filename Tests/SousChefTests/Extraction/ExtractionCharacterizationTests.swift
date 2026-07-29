@@ -195,13 +195,48 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertEqual(out.steps.first?.section, "Crust", "slowest component leads")
     }
 
-    func testSingleStringInstructionsBecomeOneBlobStep() async {
+    func testSingleStringInstructionsSplitIntoAtomicSteps() async {
         let r = await ExtractionPipeline().extractFromHTML(html: jsonldSingleString)
-        // CHARACTERIZATION-BUG (schema-hardening branch): three sentences arrive as ONE step,
-        // which Cook Mode then reads as a single wall of text.
-        XCTAssertEqual(r.steps.count, 1)
-        XCTAssertEqual(r.confidence, 0.6, accuracy: 0.001,
-                       "3 ingredients + 1 step lands in the partial tier")
+        // A one-string instruction blob is now split on sentence boundaries so Cook Mode
+        // shows discrete steps instead of a wall of text.
+        XCTAssertEqual(r.steps.map(\.text),
+                       ["Mix the dry ingredients.", "Beat in the eggs.",
+                        "Bake at 350 for 25 minutes."])
+        XCTAssertEqual(r.confidence, 0.9, accuracy: 0.001,
+                       "3 ingredients + 3 steps now reaches the full tier")
+    }
+
+    func testBlobSplitDoesNotBreakOnDecimalsOrNumbering() {
+        XCTAssertEqual(
+            SchemaOrgExtractor.splitInstructionBlob("Add 1.5 cups flour and stir well."),
+            ["Add 1.5 cups flour and stir well."], "a decimal is not a sentence boundary")
+        XCTAssertEqual(
+            SchemaOrgExtractor.splitInstructionBlob("1. Preheat the oven. 2. Grease the pan."),
+            ["Preheat the oven.", "Grease the pan."], "leading numbering is stripped")
+    }
+
+    func testJSONLDWithTrailingCommaStillParses() async {
+        let html = """
+        <html><head>
+        <script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Recipe","name":"Comma Cookies",
+         "recipeIngredient":["1 cup flour","2 eggs","1 cup sugar",],
+         "recipeInstructions":[{"@type":"HowToStep","text":"Mix."},
+                               {"@type":"HowToStep","text":"Bake."},]}
+        </script></head></html>
+        """
+        let r = await ExtractionPipeline().extractFromHTML(html: html)
+        XCTAssertEqual(r.title, "Comma Cookies")
+        XCTAssertEqual(r.ingredients.count, 3)
+        XCTAssertEqual(r.steps.count, 2)
+    }
+
+    func testProtocolRelativeImageResolvesToHTTPS() {
+        XCTAssertEqual(SchemaOrgExtractor.normalizedImageURL("//cdn.example.com/x.jpg"),
+                       "https://cdn.example.com/x.jpg")
+        XCTAssertEqual(SchemaOrgExtractor.normalizedImageURL("https://a.com/y.jpg"),
+                       "https://a.com/y.jpg")
+        XCTAssertNil(SchemaOrgExtractor.normalizedImageURL(""))
     }
 
     // MARK: - Layer merging
