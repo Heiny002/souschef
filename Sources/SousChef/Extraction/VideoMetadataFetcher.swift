@@ -8,6 +8,9 @@ struct VideoMetadata {
     let authorURL: String?    // SC-071: Creator's profile URL from oEmbed
     let caption: String?      // Often contains recipe outline
     let thumbnailURL: String?
+    /// Photo-mode slide image URLs (TikTok image posts). Empty for ordinary videos; the
+    /// pipeline runs on-device OCR over these when the caption alone isn't a viable recipe.
+    var imageURLs: [String] = []
 }
 
 actor VideoMetadataFetcher {
@@ -23,7 +26,7 @@ actor VideoMetadataFetcher {
         let sourceType = URLRouter.classify(videoURL)
         switch sourceType {
         case .tikTok:
-            return try await fetchOEmbed(endpoint: "https://www.tiktok.com/oembed", videoURL: videoURL)
+            return try await fetchTikTok(videoURL: videoURL)
         case .youTube:
             return try await fetchYouTube(videoURL: videoURL)
         case .instagram:
@@ -487,6 +490,110 @@ actor VideoMetadataFetcher {
             caption: caption,
             thumbnailURL: thumbnailURL
         )
+    }
+
+    // MARK: - TikTok
+
+    /// TikTok oEmbed returns the caption, but the recipe often lives in the video's ON-SCREEN
+    /// text (stickers) — and photo-mode posts carry the whole recipe as slide images. Both
+    /// sit in the page's `__UNIVERSAL_DATA_FOR_REHYDRATION__` blob. Fetch that, merge the
+    /// sticker text into the caption, and surface any photo-mode slide URLs for OCR.
+    private func fetchTikTok(videoURL: String) async throws -> VideoMetadata {
+        let oembed = try? await fetchOEmbed(endpoint: "https://www.tiktok.com/oembed", videoURL: videoURL)
+        if let html = try? await fetchTikTokPage(videoURL: videoURL),
+           let details = Self.tiktokDetails(fromPageHTML: html) {
+            let caption = Self.mergeCaptionAndStickers(
+                caption: Self.richerCaption(oembed?.caption, details.caption),
+                stickerText: details.stickerText)
+            return VideoMetadata(title: oembed?.title, authorName: oembed?.authorName,
+                                 authorURL: oembed?.authorURL,
+                                 caption: caption ?? oembed?.caption,
+                                 thumbnailURL: oembed?.thumbnailURL,
+                                 imageURLs: details.imageURLs)
+        }
+        if let oembed { return oembed }
+        return try await fetchOEmbed(endpoint: "https://www.tiktok.com/oembed", videoURL: videoURL)
+    }
+
+    private func fetchTikTokPage(videoURL: String) async throws -> String {
+        guard let url = URL(string: videoURL) else { throw VideoMetadataError.malformedResponse }
+        var request = URLRequest(url: url)
+        request.setValue(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let html = String(data: data, encoding: .utf8) else {
+            throw VideoMetadataError.apiError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        return html
+    }
+
+    /// Everything the rehydration blob yields for a TikTok post. Pure + testable.
+    struct TikTokDetails: Sendable {
+        let caption: String?
+        let stickerText: String   // on-screen text, newline-joined
+        let imageURLs: [String]   // photo-mode slide URLs
+    }
+
+    /// Extract caption, on-screen sticker text, and photo-mode slide URLs from a TikTok page's
+    /// `__UNIVERSAL_DATA_FOR_REHYDRATION__` JSON. Returns nil when the blob or item is absent.
+    static func tiktokDetails(fromPageHTML html: String) -> TikTokDetails? {
+        guard let root = tiktokRehydrationJSON(fromPageHTML: html),
+              let scope = root["__DEFAULT_SCOPE__"] as? [String: Any],
+              let detail = scope["webapp.video-detail"] as? [String: Any],
+              let itemInfo = detail["itemInfo"] as? [String: Any],
+              let item = itemInfo["itemStruct"] as? [String: Any] else { return nil }
+
+        var stickers: [String] = []
+        if let arr = item["stickersOnItem"] as? [[String: Any]] {
+            for s in arr {
+                if let texts = s["stickerText"] as? [String] { stickers.append(contentsOf: texts) }
+            }
+        }
+        var images: [String] = []
+        if let imagePost = item["imagePost"] as? [String: Any],
+           let imgs = imagePost["images"] as? [[String: Any]] {
+            for img in imgs {
+                if let u = img["imageURL"] as? [String: Any],
+                   let list = u["urlList"] as? [String], let first = list.first {
+                    images.append(first)
+                }
+            }
+        }
+        return TikTokDetails(caption: (item["desc"] as? String)?.nonEmpty,
+                             stickerText: stickers.joined(separator: "\n"),
+                             imageURLs: images)
+    }
+
+    /// The JSON inside `<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" …>…</script>`.
+    static func tiktokRehydrationJSON(fromPageHTML html: String) -> [String: Any]? {
+        guard let idRange = html.range(of: "__UNIVERSAL_DATA_FOR_REHYDRATION__"),
+              let tagEnd = html.range(of: ">", range: idRange.upperBound..<html.endIndex),
+              let close = html.range(of: "</script>", range: tagEnd.upperBound..<html.endIndex) else {
+            return nil
+        }
+        let json = String(html[tagEnd.upperBound..<close.lowerBound])
+        guard let data = json.data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    /// The longer of two candidate captions (more text ≈ more recipe). Pure.
+    static func richerCaption(_ a: String?, _ b: String?) -> String? {
+        switch (a?.nonEmpty, b?.nonEmpty) {
+        case let (x?, y?): return x.count >= y.count ? x : y
+        case let (x?, nil): return x
+        case let (nil, y?): return y
+        default: return nil
+        }
+    }
+
+    /// Append on-screen sticker text under the caption — stickers usually hold the ingredient
+    /// list the caption omits. nil only when both are empty.
+    static func mergeCaptionAndStickers(caption: String?, stickerText: String) -> String? {
+        let parts = [caption?.nonEmpty, stickerText.nonEmpty].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
     }
 
     // MARK: - YouTube

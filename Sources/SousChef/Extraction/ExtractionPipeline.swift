@@ -208,10 +208,24 @@ actor ExtractionPipeline {
         // failed, because it costs a download plus OCR per slide — a caption that already
         // produced a recipe is both cheaper and more reliable than text lifted off a photo.
         var carouselText = ""
-        if !result.isViable, URLRouter.classify(urlString) == .instagram,
-           let shortcode = VideoMetadataFetcher.instagramShortcode(from: urlString) {
-            carouselText = await CarouselTextExtractor.extractText(shortcode: shortcode,
-                                                                  progress: progress)
+        if !result.isViable {
+            switch URLRouter.classify(urlString) {
+            case .instagram:
+                if let shortcode = VideoMetadataFetcher.instagramShortcode(from: urlString) {
+                    carouselText = await CarouselTextExtractor.extractText(shortcode: shortcode,
+                                                                          progress: progress)
+                }
+            case .tikTok:
+                // TikTok photo-mode posts carry the recipe as slide images; the rehydration
+                // parse handed their URLs back on the metadata.
+                let urls = (metadata?.imageURLs ?? []).compactMap { URL(string: $0) }
+                if !urls.isEmpty {
+                    carouselText = await CarouselTextExtractor.extractText(imageURLs: urls,
+                                                                          progress: progress)
+                }
+            default:
+                break
+            }
             if !carouselText.isEmpty {
                 progress?("Reading the recipe…")
                 let fromSlides = PastedTextExtractor().extract(text: carouselText)

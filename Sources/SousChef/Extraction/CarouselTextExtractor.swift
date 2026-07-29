@@ -31,6 +31,14 @@ enum CarouselTextExtractor {
     static func extractText(shortcode: String,
                             progress: (@Sendable (String) -> Void)? = nil) async -> String {
         let urls = await InstagramAuth.fetchCarouselImageURLs(shortcode: shortcode)
+        return await extractText(imageURLs: urls, progress: progress)
+    }
+
+    /// OCR text from a set of already-resolved slide image URLs, joined in order. This is the
+    /// platform-agnostic core: Instagram resolves URLs from a shortcode, TikTok photo mode
+    /// hands them over directly from its rehydration blob. Empty when no slide has text.
+    static func extractText(imageURLs urls: [URL],
+                            progress: (@Sendable (String) -> Void)? = nil) async -> String {
         guard !urls.isEmpty else { return "" }
 
         let slides = Array(urls.prefix(maxSlides))

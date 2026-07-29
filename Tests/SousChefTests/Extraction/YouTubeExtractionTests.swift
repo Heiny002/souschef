@@ -110,3 +110,63 @@ final class YouTubeExtractionTests: XCTestCase {
         }
     }
 }
+
+/// Think-tank branch 7 (tiktok-rehydration). The live page fetch can't run in CI; these pin
+/// the rehydration-blob parse (caption, on-screen sticker text, photo-mode slide URLs) and
+/// the pure caption-merge helpers.
+final class TikTokExtractionTests: XCTestCase {
+
+    private func page(itemStruct: String) -> String {
+        """
+        <html><body>
+        <script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">
+        {"__DEFAULT_SCOPE__":{"webapp.video-detail":{"itemInfo":{"itemStruct":\(itemStruct)}}}}
+        </script></body></html>
+        """
+    }
+
+    func testStickerTextAndCaptionAreExtracted() {
+        let html = page(itemStruct: """
+        {"desc":"Best fried rice 🍚","stickersOnItem":[
+          {"stickerText":["2 cups rice","3 eggs"]},
+          {"stickerText":["2 tbsp soy sauce"]}]}
+        """)
+        let d = VideoMetadataFetcher.tiktokDetails(fromPageHTML: html)
+        XCTAssertEqual(d?.caption, "Best fried rice 🍚")
+        XCTAssertEqual(d?.stickerText, "2 cups rice\n3 eggs\n2 tbsp soy sauce")
+        XCTAssertEqual(d?.imageURLs, [])
+    }
+
+    func testPhotoModeImageURLsAreExtracted() {
+        let html = page(itemStruct: """
+        {"desc":"Swipe for the recipe","imagePost":{"images":[
+          {"imageURL":{"urlList":["https://p.tiktokcdn.com/1.jpg","https://p.tiktokcdn.com/1-lo.jpg"]}},
+          {"imageURL":{"urlList":["https://p.tiktokcdn.com/2.jpg"]}}]}}
+        """)
+        let d = VideoMetadataFetcher.tiktokDetails(fromPageHTML: html)
+        XCTAssertEqual(d?.imageURLs,
+                       ["https://p.tiktokcdn.com/1.jpg", "https://p.tiktokcdn.com/2.jpg"],
+                       "first (highest-quality) URL per slide")
+    }
+
+    func testRehydrationNilWhenBlobAbsent() {
+        XCTAssertNil(VideoMetadataFetcher.tiktokDetails(
+            fromPageHTML: "<html><body>no rehydration data</body></html>"))
+    }
+
+    func testCaptionMergeHelpers() {
+        XCTAssertEqual(VideoMetadataFetcher.richerCaption("short", "much longer caption"),
+                       "much longer caption")
+        XCTAssertEqual(VideoMetadataFetcher.richerCaption("only this", nil), "only this")
+        XCTAssertNil(VideoMetadataFetcher.richerCaption(nil, nil))
+
+        XCTAssertEqual(
+            VideoMetadataFetcher.mergeCaptionAndStickers(caption: "Fried rice", stickerText: "2 cups rice"),
+            "Fried rice\n\n2 cups rice")
+        XCTAssertEqual(
+            VideoMetadataFetcher.mergeCaptionAndStickers(caption: nil, stickerText: "2 cups rice"),
+            "2 cups rice")
+        XCTAssertNil(
+            VideoMetadataFetcher.mergeCaptionAndStickers(caption: nil, stickerText: ""))
+    }
+}
