@@ -35,6 +35,7 @@ struct ExtractionResult: Sendable {
     var debugInfo: String?               // testing aid: which fetch routes ran + what they returned
     var wasTruncated: Bool = false       // caption arrived cut off (trailing "…"); show a banner
     var producedBy: ContentSource = .social  // gates output-side phrase filtering (invariant I2)
+    var creatorSharesByDM: Bool = false  // caption funnels the recipe via DM; honest failure copy
 
     init(extractionMethod: String) {
         self.ingredients = []

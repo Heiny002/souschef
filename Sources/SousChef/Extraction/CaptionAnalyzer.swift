@@ -136,6 +136,19 @@ enum CaptionAnalyzer {
         return String(text[lower..<upper])
     }
 
+    /// True when a caption funnels the recipe through DMs ("comment RECIPE and I'll DM you")
+    /// rather than giving it. These posts never contain the recipe, so a failed extraction
+    /// should say so honestly instead of quietly showing an unrelated substitute.
+    static func isDMFunnel(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let patterns = [
+            #"comment\s+["']?\w+["']?\s+(and|&|to)\b.{0,40}\b(dm|send|get|recipe|link)\b"#,
+            #"\bdm\s+me\b.{0,30}\b(for|recipe|it|link)\b"#,
+            #"i'?ll\s+(dm|send|message)\s+(you|it|the)\b"#,
+        ]
+        return patterns.contains { lower.range(of: $0, options: .regularExpression) != nil }
+    }
+
     /// Check if text matches any "link in bio" pattern.
     private static func matchesLinkInBio(_ lowered: String) -> Bool {
         for pattern in bioPatterns {

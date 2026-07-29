@@ -286,6 +286,13 @@ actor ExtractionPipeline {
             result.wasTruncated = true
         }
 
+        // A "comment RECIPE and I'll DM you" post never contains the recipe. Flag it (only when
+        // extraction failed) so the review screen can say so honestly rather than presenting an
+        // unrelated web substitute as if it were this creator's recipe.
+        if !result.isViable, CaptionAnalyzer.isDMFunnel(allCaptionText) {
+            result.creatorSharesByDM = true
+        }
+
         // Attach provenance + photo so a caption-parsed import still shows its Instagram badge,
         // source link and thumbnail (regardless of which extractor won).
         result.originalSourceURL = urlString

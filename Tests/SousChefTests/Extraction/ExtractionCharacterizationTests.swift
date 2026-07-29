@@ -319,6 +319,21 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a comment, and I'll DM the recipe"))
     }
 
+    // MARK: - DM-funnel detection (think-tank branch 13)
+
+    func testDMFunnelCaptionsAreDetected() {
+        XCTAssertTrue(CaptionAnalyzer.isDMFunnel("Comment RECIPE and I'll DM you the full thing!"))
+        XCTAssertTrue(CaptionAnalyzer.isDMFunnel("DM me for the recipe 💌"))
+        XCTAssertTrue(CaptionAnalyzer.isDMFunnel("Comment 'pasta' and I'll send it over"))
+        XCTAssertTrue(CaptionAnalyzer.isDMFunnel("I'll send you the recipe if you comment below"))
+    }
+
+    func testOrdinaryCaptionsAreNotDMFunnels() {
+        XCTAssertFalse(CaptionAnalyzer.isDMFunnel("Add the garlic and cook for 5 minutes."))
+        XCTAssertFalse(CaptionAnalyzer.isDMFunnel("Comment below and let me know how it turned out!"))
+        XCTAssertFalse(CaptionAnalyzer.isDMFunnel(""))
+    }
+
     // MARK: - Source-aware sanitize + numeric grounding (think-tank branch 11)
 
     func testWebResultKeepsPhraseOpeningInstruction() {
