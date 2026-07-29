@@ -440,10 +440,22 @@ def split_inline_numbered(line):
 
 
 CTA = ("save this", "save it", "save for later", "follow for more", "follow me",
-       "comment below", "comment ", "drop a ", "tag a friend", "tag someone", "double tap",
+       "comment below", "comment ", "tag a friend", "tag someone", "double tap",
        "like and", "share this", "link in bio", "recipe in bio", "full recipe",
        "check out my", "subscribe", "hit the", "let me know", "who would you",
        "watch till", "part 1", "new video")
+# "drop a " needs its object checked: "drop a comment" is bait, "drop a dollop" is cooking.
+ENGAGEMENT_DROP_OBJECTS = {"comment", "comments", "like", "follow", "rating", "review",
+                           "emoji", "heart", "dm", "fire", "🔥", "❤️", "❤", "👇", "⭐",
+                           "🙌", "👍"}
+
+
+def is_engagement_drop(core):
+    """Mirrors SocialTextFilter.isEngagementDrop."""
+    if not core.startswith("drop a "):
+        return False
+    obj = core[len("drop a "):].split()[0] if core[len("drop a "):].split() else ""
+    return obj.rstrip(".,!?:;'\"") in ENGAGEMENT_DROP_OBJECTS
 NARRATIVE = ("the kind of", "this is the", "trust me", "obsessed with", "my favorite",
              "you guys", "i can't stop", "pov:", "when you", "nothing beats", "if you love")
 
@@ -499,9 +511,16 @@ def is_noise(line):
     core = core.strip().lower()
     if not core:
         return True
-    if len(core.split()) <= MAX_CTA_WORDS and core.startswith(CTA):
-        return True
-    return core.startswith(NARRATIVE)
+    # Both phrase lists only condemn SHORT lines — a long line opening with "when you"
+    # is a real instruction (mirrors the Swift maxCTAWords cap covering NARRATIVE too).
+    if len(core.split()) <= MAX_CTA_WORDS:
+        if is_engagement_drop(core):
+            return True
+        if core.startswith(CTA):
+            return True
+        if core.startswith(NARRATIVE):
+            return True
+    return False
 
 
 def clean_line(line):

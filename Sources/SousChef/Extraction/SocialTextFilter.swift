@@ -58,13 +58,30 @@ enum SocialTextFilter {
     // MARK: - Caption lines
 
     /// Calls to action and engagement bait — never part of a recipe.
+    /// "drop a " is handled separately (see `isEngagementDrop`): it needs to know what is
+    /// being dropped, because "Drop a dollop of sour cream" is a real serving instruction.
     private static let ctaPhrases = [
         "save this", "save it", "save for later", "follow for more", "follow me",
-        "comment below", "comment ", "drop a ", "tag a friend", "tag someone",
+        "comment below", "comment ", "tag a friend", "tag someone",
         "double tap", "like and", "share this", "link in bio", "recipe in bio",
         "full recipe", "check out my", "subscribe", "hit the", "let me know",
         "who would you", "watch till", "part 1", "new video",
     ]
+
+    /// Objects of "drop a …" that mark engagement bait rather than cooking. Anything not in
+    /// this set — a dollop, a spoonful, a tablespoon — is presumed culinary and kept.
+    private static let engagementDropObjects: Set<String> = [
+        "comment", "comments", "like", "follow", "rating", "review", "emoji", "heart",
+        "dm", "fire", "🔥", "❤️", "❤", "👇", "⭐", "🙌", "👍",
+    ]
+
+    /// True for "drop a comment/like/🔥…" — engagement bait. False for "drop a dollop…".
+    private static func isEngagementDrop(_ stripped: String) -> Bool {
+        guard stripped.hasPrefix("drop a ") else { return false }
+        var object = String(stripped.dropFirst("drop a ".count).prefix { !$0.isWhitespace })
+        while let last = object.last, ".,!?:;'\"".contains(last) { object.removeLast() }
+        return engagementDropObjects.contains(object)
+    }
 
     /// Marketing narrative that reads like a caption, not an instruction — e.g.
     /// "The kind of appetizer that looks effortlessly impressive".
@@ -163,12 +180,15 @@ enum SocialTextFilter {
         let stripped = core.drop { !$0.isLetter && !$0.isNumber }.description.lowercased()
         guard !stripped.isEmpty else { return true }   // nothing but tags and decoration
 
-        // A CTA only condemns a SHORT line; a long one is a real instruction that happens to
-        // open with a marketing-sounding phrase.
+        // A CTA or narrative opener only condemns a SHORT line; a long one is a real
+        // instruction that happens to open with a marketing-sounding phrase ("When you flip
+        // the pancake, wait for bubbles…"). narrativeOpeners used to sit outside this cap
+        // and deleted real instructions of any length.
         if stripped.split(whereSeparator: \.isWhitespace).count <= maxCTAWords {
+            if isEngagementDrop(stripped) { return true }
             for phrase in ctaPhrases where stripped.hasPrefix(phrase) { return true }
+            for opener in narrativeOpeners where stripped.hasPrefix(opener) { return true }
         }
-        for opener in narrativeOpeners where stripped.hasPrefix(opener) { return true }
         return false
     }
 

@@ -453,7 +453,7 @@ actor ExtractionPipeline {
         // this rescues blogs / custom sites with no usable structured data. Keep it only if it's
         // more confident, and carry over any fields the deterministic layers did find (photo,
         // description, times). No key / failure → the deterministic result stands.
-        if result.confidence < ConfidenceThreshold.reject, let apiKey = Self.anthropicAPIKey {
+        if ConfidenceThreshold.needsRescue(result.confidence), let apiKey = Self.anthropicAPIKey {
             if let llm = try? await LLMExtractor(apiKey: apiKey).extract(html: html),
                llm.confidence > result.confidence {
                 result = merge(base: result, onto: llm)
@@ -475,11 +475,15 @@ actor ExtractionPipeline {
         // Layer 2: Microdata
         var layer2 = MicrodataExtractor().extract(html: html)
         layer2 = merge(base: layer1, onto: layer2)
+        layer2.confidence = rescored(layer2, full: 0.9, partial: 0.6)
         if layer2.confidence >= ConfidenceThreshold.accept {
             return layer2
         }
 
-        // Layer 3: Heuristic HTML
+        // Layer 3: Heuristic HTML. Deliberately NOT rescored: layer3's merged content is
+        // mostly layer2's, and rescoring it with heuristic tier values (0.8/0.5) would let
+        // this early return claim that content at a LOWER confidence than layer2 already
+        // holds — the final max() below arbitrates that case correctly instead.
         var layer3 = HeuristicExtractor().extract(html: html)
         layer3 = merge(base: layer2, onto: layer3)
         if layer3.confidence >= ConfidenceThreshold.reject {
@@ -491,6 +495,20 @@ actor ExtractionPipeline {
 
         // Return best available result (highest confidence)
         return [layer1, layer2, layer3].max(by: { $0.confidence < $1.confidence }) ?? layer3
+    }
+
+    /// Each extractor scores its confidence on its OWN fields, before the pipeline merges
+    /// layers — so a result completed by merge() kept its pre-merge score, and a page whose
+    /// recipe was split across JSON-LD and microdata could carry a full recipe at 0.2,
+    /// triggering false LLM rescues and review flags. Re-apply the layer's tier formula to
+    /// the merged field set, never lowering the extractor's own judgement. (Applied to
+    /// layer2 only: both contributing layers there are structured-data grade, so structured
+    /// tier values are honest for the merged whole.)
+    private func rescored(_ r: ExtractionResult, full: Double, partial: Double) -> Double {
+        guard r.title != nil else { return r.confidence }
+        if r.ingredients.count >= 3 && r.steps.count >= 2 { return max(r.confidence, full) }
+        if r.ingredients.count >= 1 && r.steps.count >= 1 { return max(r.confidence, partial) }
+        return r.confidence
     }
 
     /// Merge earlier-layer partial results into a later-layer result (fill gaps only).

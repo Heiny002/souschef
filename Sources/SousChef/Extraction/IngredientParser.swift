@@ -139,10 +139,11 @@ struct IngredientParser {
         if s.allSatisfy({ $0.isNumber }) { return true }
         if isFraction(s) { return true }
         if let _ = Double(s) { return true }
-        // Range: "2-3"
+        // Range: "2-3". Both sides must be non-empty — "1-" used to pass because
+        // "".allSatisfy is vacuously true, producing the unscalable quantity "1-".
         if s.contains("-") {
             let parts = s.components(separatedBy: "-")
-            return parts.count == 2 && parts.allSatisfy { $0.allSatisfy { $0.isNumber } }
+            return parts.count == 2 && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy { $0.isNumber } }
         }
         return false
     }

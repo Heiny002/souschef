@@ -173,16 +173,25 @@ final class ExtractionCharacterizationTests: XCTestCase {
 
     // MARK: - Layer merging
 
-    func testRecipeSplitAcrossLayersIsReturnedIncomplete() async {
+    func testRecipeSplitAcrossLayersIsAssembledAtFullConfidence() async {
         let r = await ExtractionPipeline().extractFromHTML(html: splitAcrossLayers)
-        // CHARACTERIZATION-BUG (p0-correctness): the page contains a complete recipe —
-        // JSON-LD has title + 3 ingredients, microdata has title + 2 steps, and merge()
-        // combines them — but confidence is computed BEFORE the merge and never revisited,
-        // so every layer scores 0.2 and the pipeline returns the JSON-LD result with NO
-        // STEPS even though it assembled the full recipe internally.
-        XCTAssertEqual(r.confidence, 0.2, accuracy: 0.001)
-        XCTAssertTrue(r.steps.isEmpty, "steps were \(r.steps.map(\.text))")
+        // JSON-LD has title + 3 ingredients, microdata has title + 2 steps. Confidence used
+        // to be computed before merge() and never revisited, so the assembled full recipe
+        // scored 0.2 and came back with NO steps. Now the merged layer is rescored with its
+        // own tier formula and the complete recipe wins.
+        XCTAssertEqual(r.confidence, 0.9, accuracy: 0.001)
+        XCTAssertEqual(r.steps.count, 2, "steps were \(r.steps.map(\.text))")
         XCTAssertEqual(r.ingredients.count, 3)
+        XCTAssertEqual(r.title, "Split Souffle")
+    }
+
+    func testRescueGateIncludesExactlyTheRejectBoundary() {
+        // HeuristicExtractor's weak tier scores exactly `reject` (0.5); a strict `<` made
+        // the web LLM rescue unreachable for precisely the marginal pages it exists for.
+        XCTAssertTrue(ConfidenceThreshold.needsRescue(0.5))
+        XCTAssertTrue(ConfidenceThreshold.needsRescue(0.2))
+        XCTAssertFalse(ConfidenceThreshold.needsRescue(0.51))
+        XCTAssertFalse(ConfidenceThreshold.needsRescue(0.8))
     }
 
     func testMicrodataOnlyPageParsesAtHighConfidence() async {
@@ -216,34 +225,39 @@ final class ExtractionCharacterizationTests: XCTestCase {
 
     // MARK: - Noise filtering
 
-    func testLongInstructionOpeningWithNarrativePhraseIsCondemned() {
-        // CHARACTERIZATION-BUG (p0-correctness): CTA phrases only condemn lines up to
-        // maxCTAWords, but narrative openers have no such cap — this 16-word real
-        // instruction is deleted because it happens to open with "when you".
+    func testLongInstructionOpeningWithNarrativePhraseSurvives() {
+        // Narrative openers used to condemn lines of ANY length; the maxCTAWords cap now
+        // covers them too, so a 16-word real instruction opening with "when you" survives.
         let line = "When you flip the pancake wait for bubbles to form across the surface before turning it"
-        XCTAssertTrue(SocialTextFilter.isNoiseLine(line))
+        XCTAssertFalse(SocialTextFilter.isNoiseLine(line))
+        // Short narrative lines are still condemned.
+        XCTAssertTrue(SocialTextFilter.isNoiseLine("When you need a last-minute app"))
     }
 
-    func testCulinaryDropAIsCondemnedAsCTA() {
-        // CHARACTERIZATION-BUG (p0-correctness): "drop a " is an unconditional CTA prefix,
-        // so a real serving instruction is deleted alongside "drop a comment".
-        XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a dollop of sour cream on top"))
+    func testCulinaryDropASurvivesAsInstruction() {
+        // "drop a " used to be an unconditional CTA prefix that deleted real serving
+        // instructions; it now checks WHAT is being dropped.
+        XCTAssertFalse(SocialTextFilter.isNoiseLine("Drop a dollop of sour cream on top"))
+        XCTAssertFalse(SocialTextFilter.isNoiseLine("Drop a spoonful of batter per pancake"))
     }
 
     func testEngagementDropAStaysCondemned() {
-        // Correct today and must stay correct after the p0 fix narrows "drop a ".
+        // The narrowed "drop a " must still catch actual engagement bait.
         XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a comment below if you try it"))
         XCTAssertTrue(SocialTextFilter.isNoiseLine("drop a like if you want part 2"))
+        XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a 🔥 if you'd make this"))
+        XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a comment, and I'll DM the recipe"))
     }
 
     // MARK: - Ingredient parsing
 
-    func testDanglingDashParsesAsGarbageQuantity() {
-        // CHARACTERIZATION-BUG (p0-correctness): "1-" passes the numeric-range check because
-        // the empty right-hand side vacuously satisfies allSatisfy, so the quantity becomes
-        // the literal string "1-", which downstream Quantity.parse cannot scale.
+    func testDanglingDashYieldsNoQuantityInsteadOfGarbage() {
+        // "1-" used to pass the numeric-range check (empty right side vacuously satisfied
+        // allSatisfy) and became the unscalable quantity string "1-". Malformed input now
+        // yields no quantity; the raw text is preserved for ReviewView.
         let p = IngredientParser().parse(raw: "1- cup sugar")
-        XCTAssertEqual(p.quantity, "1-")
+        XCTAssertNil(p.quantity)
+        XCTAssertEqual(p.rawText, "1- cup sugar")
     }
 
     func testRealRangesStillParse() {

@@ -58,4 +58,10 @@ enum ConfidenceThreshold {
     static let accept: Double = 0.7
     /// Continue to next layer.
     static let reject: Double = 0.5
+
+    /// True when a deterministic web result is weak enough to justify the LLM rescue.
+    /// Inclusive of `reject` itself: HeuristicExtractor's weak tier scores exactly 0.5,
+    /// and those marginal pages are precisely what the rescue exists for — a strict `<`
+    /// made it unreachable for them.
+    static func needsRescue(_ confidence: Double) -> Bool { confidence <= reject }
 }

@@ -19,28 +19,23 @@ struct SchemaOrgExtractor {
                   let data = jsonText.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) else { continue }
 
-            // Could be a single object or an array
+            // Could be a single object, an array, or a @graph wrapper.
+            var candidates: [[String: Any]] = []
             if let array = json as? [[String: Any]] {
-                for item in array {
-                    if let r = extractRecipe(from: item), r.isViable {
-                        result = r
-                        return result
-                    }
-                }
+                candidates = array
             } else if let dict = json as? [String: Any] {
-                // Handle @graph wrapper
-                if let graph = dict["@graph"] as? [[String: Any]] {
-                    for item in graph {
-                        if let r = extractRecipe(from: item), r.isViable {
-                            result = r
-                            return result
-                        }
-                    }
-                }
-                if let r = extractRecipe(from: dict), r.isViable {
-                    result = r
-                    return result
-                }
+                if let graph = dict["@graph"] as? [[String: Any]] { candidates = graph }
+                candidates.append(dict)
+            }
+
+            for item in candidates {
+                guard let r = extractRecipe(from: item) else { continue }
+                if r.isViable { return r }
+                // A partial Recipe object — e.g. ingredients present but instructions in a
+                // shape parseInstructions can't read — is still worth returning: the
+                // pipeline's merge() gap-fills it from the microdata/heuristic layers.
+                // Discarding it here starved that merge and returned an empty layer.
+                if r.confidence > result.confidence { result = r }
             }
         }
 
