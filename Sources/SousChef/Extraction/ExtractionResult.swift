@@ -24,6 +24,7 @@ struct ExtractionResult: Sendable {
     var captionPreview: String?          // snippet of searched text shown in failure UI
     var authorHint: String?              // creator name/handle for failure UI copy
     var debugInfo: String?               // testing aid: which fetch routes ran + what they returned
+    var wasTruncated: Bool = false       // caption arrived cut off (trailing "…"); show a banner
 
     init(extractionMethod: String) {
         self.ingredients = []

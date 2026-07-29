@@ -100,6 +100,9 @@ struct ReviewView: View {
                         if extractionResult.isSubstitute {
                             substituteBanner
                         }
+                        if extractionResult.wasTruncated {
+                            truncationBanner
+                        }
                         if !isManual {
                             confidenceHeader
                         }
@@ -518,6 +521,29 @@ struct ReviewView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.scAccent.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private var truncationBanner: some View {
+        HStack(spacing: Spacing.sm) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 20))
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Caption may be cut off")
+                    .font(.scLabel)
+                    .foregroundStyle(Color.scTextPrimary)
+                Text("This post's caption ended mid-recipe, so some steps may be missing. Review below, or paste the full recipe if you have it.")
+                    .font(.scCaption)
+                    .foregroundStyle(Color.scTextSecondary)
+            }
+        }
+        .padding(Spacing.md)
+        .background(Color.orange.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
     }
 

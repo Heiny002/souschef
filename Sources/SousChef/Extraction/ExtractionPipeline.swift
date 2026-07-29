@@ -278,6 +278,14 @@ actor ExtractionPipeline {
         // (and can rearrange) the suggested order on the review screen.
         result = Self.applyComponentSequencing(to: result)
 
+        // Truncation honesty: a caption that ends in an ellipsis arrived cut off (og:description
+        // / preview routes do this). Flag it so review shows a banner rather than silently
+        // saving half a recipe. Only meaningful when the caption is the source, so skip it once
+        // slide OCR supplied the recipe instead.
+        if carouselText.isEmpty, TruncationDetector.isLikelyTruncated(captionText) {
+            result.wasTruncated = true
+        }
+
         // Attach provenance + photo so a caption-parsed import still shows its Instagram badge,
         // source link and thumbnail (regardless of which extractor won).
         result.originalSourceURL = urlString

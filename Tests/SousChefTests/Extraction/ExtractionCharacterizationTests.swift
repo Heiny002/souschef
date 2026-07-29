@@ -317,6 +317,28 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a comment, and I'll DM the recipe"))
     }
 
+    // MARK: - Truncation honesty (think-tank branch 10)
+
+    func testEntityDecoderHandlesEllipsisForms() {
+        XCTAssertEqual(HTMLEntities.decode("Bake until golden&hellip;"), "Bake until golden…")
+        XCTAssertEqual(HTMLEntities.decode("Bake&#8230;"), "Bake…")
+        XCTAssertEqual(HTMLEntities.decode("Bake&#x2026;"), "Bake…")
+        XCTAssertEqual(HTMLEntities.decode("salt &amp; pepper"), "salt & pepper")
+    }
+
+    func testTruncationDetectedThroughEngagementPrefixAndEntities() {
+        // og:description wraps the caption in quotes and HTML-encodes the ellipsis; the
+        // detector must strip the preamble and decode before it can see the "…".
+        let caption = #"69K likes, 417 comments - chef on July 3: "Best pasta. Add the garlic, then&hellip;""#
+        XCTAssertTrue(TruncationDetector.isLikelyTruncated(caption))
+        XCTAssertTrue(TruncationDetector.isLikelyTruncated("Step one. Step two..."))
+    }
+
+    func testCompleteCaptionIsNotFlaggedTruncated() {
+        XCTAssertFalse(TruncationDetector.isLikelyTruncated("Mix, then bake at 350 for 20 minutes."))
+        XCTAssertFalse(TruncationDetector.isLikelyTruncated(""))
+    }
+
     // MARK: - Plain-web text pass (think-tank branch 8)
 
     func testDOMTextExtractorPreservesLineBreaks() {

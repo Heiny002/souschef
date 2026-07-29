@@ -80,6 +80,7 @@
 		FEED0000000000000000EE11 /* SocialTextFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EE12 /* SocialTextFilter.swift */; };
 		FEED0000000000000000BA11 /* PerplexitySearcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000BA12 /* PerplexitySearcher.swift */; };
 		FEED0000000000000000CE11 /* CarouselTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CE12 /* CarouselTextExtractor.swift */; };
+		FEED0000000000000000CE31 /* HTMLEntities.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CE32 /* HTMLEntities.swift */; };
 		FEED0000000000000000CE21 /* DOMTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CE22 /* DOMTextExtractor.swift */; };
 		FEED0000000000000000DE01 /* RecipeScaling.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000DE02 /* RecipeScaling.swift */; };
 		FEED0000000000000000EF11 /* ServingSizeInferrer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EF12 /* ServingSizeInferrer.swift */; };
@@ -122,6 +123,7 @@
 		FEED0000000000000000EE12 /* SocialTextFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialTextFilter.swift; sourceTree = "<group>"; };
 		FEED0000000000000000BA12 /* PerplexitySearcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerplexitySearcher.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CE12 /* CarouselTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarouselTextExtractor.swift; sourceTree = "<group>"; };
+		FEED0000000000000000CE32 /* HTMLEntities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLEntities.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CE22 /* DOMTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DOMTextExtractor.swift; sourceTree = "<group>"; };
 		FEED0000000000000000DE02 /* RecipeScaling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeScaling.swift; sourceTree = "<group>"; };
 		FEED0000000000000000EF12 /* ServingSizeInferrer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServingSizeInferrer.swift; sourceTree = "<group>"; };
@@ -490,6 +492,7 @@
 				FEED0000000000000000EE12 /* SocialTextFilter.swift */,
 				FEED0000000000000000BA12 /* PerplexitySearcher.swift */,
 				FEED0000000000000000CE12 /* CarouselTextExtractor.swift */,
+				FEED0000000000000000CE32 /* HTMLEntities.swift */,
 				FEED0000000000000000CE22 /* DOMTextExtractor.swift */,
 				82FF8F6B3A0D2953DB61A55C /* MicrodataExtractor.swift */,
 				D6E7F8091A2B3C4D5E6F7081 /* IngredientAnnotator.swift */,
@@ -661,6 +664,7 @@
 				FEED0000000000000000EE11 /* SocialTextFilter.swift in Sources */,
 				FEED0000000000000000BA11 /* PerplexitySearcher.swift in Sources */,
 				FEED0000000000000000CE11 /* CarouselTextExtractor.swift in Sources */,
+				FEED0000000000000000CE31 /* HTMLEntities.swift in Sources */,
 				FEED0000000000000000CE21 /* DOMTextExtractor.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* IngredientAnnotator.swift in Sources */,
 				9E4BF5BA4F11E86F358EF5FF /* MicroStepSplitter.swift in Sources */,
