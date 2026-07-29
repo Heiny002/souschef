@@ -23,10 +23,31 @@ struct PastedTextExtractor {
         "step", "preparation", "how to make it", "how to make", "to make it", "to make",
     ]
 
+    /// Structural evidence gathered during a parse — the signals the pipeline's structurer
+    /// skip-gate needs to judge whether this deterministic parse can be trusted outright
+    /// (no LLM call) or the caption is messy enough to be worth spending tokens on.
+    struct ParseAudit: Sendable {
+        /// Document-wide occurrences of an ingredients header ("Ingredients:", "You'll need").
+        /// More than one means a multi-component caption this parser handles poorly.
+        var ingredientHeaderCount = 0
+        /// Document-wide occurrences of a steps header ("Instructions:", "Method").
+        var stepHeaderCount = 0
+        /// True when the parse ran the structured path with BOTH headers present.
+        var usedExplicitHeaders = false
+        /// Non-empty lines discarded when the step region stopped at a second ingredient
+        /// header — a silently dropped second component. Zero for a clean caption.
+        var linesDiscardedAfterSteps = 0
+    }
+
     // MARK: - Entry point
 
     func extract(text rawText: String) -> ExtractionResult {
+        extractWithAudit(text: rawText).result
+    }
+
+    func extractWithAudit(text rawText: String) -> (result: ExtractionResult, audit: ParseAudit) {
         var result = ExtractionResult(extractionMethod: Self.method)
+        var audit = ParseAudit()
 
         // Instagram captions arrive HTML-encoded, so bullets and dashes come through as
         // entities (&#x2022;, &#x2013;). Decode first so markers strip and text renders.
@@ -47,10 +68,16 @@ struct PastedTextExtractor {
         var stepHeaderIdx: Int?
         var subsectionIdx: Int?
         for (i, line) in lines.enumerated() where !line.isEmpty {
-            if ingHeaderIdx == nil, Self.isIngredientHeader(line) { ingHeaderIdx = i }
-            else if stepHeaderIdx == nil, Self.isStepHeader(line) { stepHeaderIdx = i }
+            if Self.isIngredientHeader(line) {
+                audit.ingredientHeaderCount += 1
+                if ingHeaderIdx == nil { ingHeaderIdx = i }
+            } else if Self.isStepHeader(line) {
+                audit.stepHeaderCount += 1
+                if stepHeaderIdx == nil { stepHeaderIdx = i }
+            }
             if subsectionIdx == nil, Self.isSubsection(line) { subsectionIdx = i }
         }
+        audit.usedExplicitHeaders = ingHeaderIdx != nil && stepHeaderIdx != nil
 
         var title: String?
         var ingredients: [RawIngredient] = []
@@ -61,7 +88,8 @@ struct PastedTextExtractor {
                 lines: lines,
                 ingHeaderIdx: ingHeaderIdx,
                 stepHeaderIdx: stepHeaderIdx,
-                subsectionIdx: subsectionIdx
+                subsectionIdx: subsectionIdx,
+                audit: &audit
             )
         } else {
             (title, ingredients, steps) = parseHeuristic(lines: lines)
@@ -75,13 +103,14 @@ struct PastedTextExtractor {
         result.cookTime = Self.extractTime(from: text, labels: ["cook", "bake", "roast", "grill"])
         result.prepTime = Self.extractTime(from: text, labels: ["prep", "prepare", "preparation"])
         result.confidence = Self.confidence(ingredients: ingredients, steps: steps)
-        return result
+        return (result, audit)
     }
 
     // MARK: - Structured parse (headers present)
 
     private func parseStructured(
-        lines: [String], ingHeaderIdx: Int?, stepHeaderIdx: Int?, subsectionIdx: Int?
+        lines: [String], ingHeaderIdx: Int?, stepHeaderIdx: Int?, subsectionIdx: Int?,
+        audit: inout ParseAudit
     ) -> (String?, [RawIngredient], [RawStep]) {
         let anchors = [ingHeaderIdx, stepHeaderIdx, subsectionIdx].compactMap { $0 }
         let earliest = anchors.min() ?? 0
@@ -146,7 +175,13 @@ struct PastedTextExtractor {
             for i in (s + 1)..<lines.count {
                 let line = lines[i]
                 if line.isEmpty { continue }
-                if Self.isIngredientHeader(line) { break }
+                if Self.isIngredientHeader(line) {
+                    // A second component's ingredient list starts here; this parser stops
+                    // and everything from this line on is dropped. Record the loss so the
+                    // skip-gate knows this caption is NOT one to trust deterministically.
+                    audit.linesDiscardedAfterSteps = lines[i...].filter { !$0.isEmpty }.count
+                    break
+                }
                 block.append(line)
             }
             steps = Self.assembleSteps(from: block)

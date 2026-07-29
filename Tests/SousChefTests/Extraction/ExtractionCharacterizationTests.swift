@@ -249,6 +249,87 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a comment, and I'll DM the recipe"))
     }
 
+    // MARK: - Structurer skip-gate (think-tank branch 3)
+
+    /// The modal clean recipe post: unique headers, quantity-led ingredients, no mess.
+    private let cleanCaption = """
+    Garlic Butter Shrimp
+
+    Ingredients:
+    1 lb shrimp
+    4 tbsp butter
+    4 cloves garlic
+
+    Steps:
+    1. Melt the butter with the garlic.
+    2. Cook the shrimp until pink.
+    """
+
+    func testCleanCaptionSkipsTheStructurer() {
+        let (r, audit) = PastedTextExtractor().extractWithAudit(text: cleanCaption)
+        XCTAssertGreaterThanOrEqual(r.confidence, ConfidenceThreshold.accept)
+        XCTAssertEqual(audit.ingredientHeaderCount, 1)
+        XCTAssertEqual(audit.stepHeaderCount, 1)
+        XCTAssertEqual(audit.linesDiscardedAfterSteps, 0)
+        XCTAssertTrue(ExtractionPipeline.shouldSkipStructurer(
+            deterministic: r, audit: audit, caption: cleanCaption))
+    }
+
+    func testMultiComponentCaptionStillCallsTheStructurer() {
+        // Two ingredient headers + a silently discarded second component: exactly the
+        // caption shape the deterministic parser mishandles, so tokens are worth spending.
+        let (r, audit) = PastedTextExtractor().extractWithAudit(text: twoComponentCaption)
+        XCTAssertEqual(audit.ingredientHeaderCount, 2)
+        XCTAssertGreaterThan(audit.linesDiscardedAfterSteps, 0)
+        XCTAssertFalse(ExtractionPipeline.shouldSkipStructurer(
+            deterministic: r, audit: audit, caption: twoComponentCaption))
+    }
+
+    func testHeaderlessCaptionStillCallsTheStructurer() {
+        let caption = """
+        Best pasta ever
+
+        200g spaghetti
+        2 tbsp butter
+        1 cup parmesan
+        Boil the pasta until al dente.
+        Toss with butter and cheese.
+        """
+        let (r, audit) = PastedTextExtractor().extractWithAudit(text: caption)
+        XCTAssertFalse(audit.usedExplicitHeaders)
+        XCTAssertFalse(ExtractionPipeline.shouldSkipStructurer(
+            deterministic: r, audit: audit, caption: caption))
+    }
+
+    func testTruncatedCaptionStillCallsTheStructurer() {
+        // An og:description cut mid-recipe ends in an ellipsis — the raw caption handed to
+        // the structurer may hold more than the preview the deterministic parser saw.
+        let truncated = cleanCaption + "…"
+        let (r, audit) = PastedTextExtractor().extractWithAudit(text: truncated)
+        XCTAssertFalse(ExtractionPipeline.shouldSkipStructurer(
+            deterministic: r, audit: audit, caption: truncated))
+    }
+
+    func testUnquantifiedIngredientListStillCallsTheStructurer() {
+        // Headers are right but no ingredient carries a quantity — the "list" may really be
+        // narrative or a bare shopping list, which the structurer sorts out better.
+        let caption = """
+        Pantry Pasta
+
+        Ingredients:
+        spaghetti
+        butter
+        parmesan cheese
+
+        Steps:
+        1. Boil the pasta.
+        2. Toss with butter and cheese.
+        """
+        let (r, audit) = PastedTextExtractor().extractWithAudit(text: caption)
+        XCTAssertFalse(ExtractionPipeline.shouldSkipStructurer(
+            deterministic: r, audit: audit, caption: caption))
+    }
+
     // MARK: - Ingredient parsing
 
     func testDanglingDashYieldsNoQuantityInsteadOfGarbage() {

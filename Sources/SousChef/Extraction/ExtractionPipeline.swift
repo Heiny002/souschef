@@ -189,8 +189,10 @@ actor ExtractionPipeline {
         // than the spoken-word transcript extractor. Keep whichever candidate is richer.
         progress?("Reading the recipe…")
         var result = TranscriptExtractor().extract(transcript: fullText)
+        var captionParse: (result: ExtractionResult, audit: PastedTextExtractor.ParseAudit)?
         if !cleanedCaption.isEmpty {
-            let pasted = PastedTextExtractor().extract(text: cleanedCaption)
+            captionParse = PastedTextExtractor().extractWithAudit(text: cleanedCaption)
+            let pasted = captionParse!.result
             // Ties go to the paste-style parse. It reads written structure ("Ingredients:",
             // bullets) far better than the spoken-word extractor, so on equal completeness it
             // is the better recipe — and the old strictly-greater test meant a tie silently
@@ -231,16 +233,29 @@ actor ExtractionPipeline {
         // Slide OCR is fed here too when the caption had nothing: text lifted off images comes
         // back ragged (line breaks mid-sentence, headers split from their lists), which is
         // exactly the mess the structurer handles better than the rule-based parser.
-        let textToStructure = captionText.count >= 40 ? captionText : carouselText
+        let usingCaption = captionText.count >= 40
+        let textToStructure = usingCaption ? captionText : carouselText
         if let apiKey, textToStructure.count >= 40 {
-            progress?("Structuring the recipe…")
-            let structurer = LLMCaptionStructurer(apiKey: apiKey)
-            if let llm = try? await structurer.structure(caption: textToStructure, titleHint: titleHint),
-               llm.isViable, Self.completeness(llm) >= Self.completeness(result) {
-                result = llm
-                debugTrace.append("LLM structurer: \(llm.ingredients.count) ingredients, \(llm.steps.count) steps")
+            // Skip-gate (think-tank branch 3): a clean "Ingredients:/Steps:" caption the
+            // deterministic parser already nailed doesn't need a paid call — the structurer's
+            // output was usually discarded by the completeness guard below anyway. The gate
+            // only applies to the CAPTION parse: carousel OCR text comes back ragged and
+            // legitimately needs the structurer, so it is never skipped.
+            if usingCaption, let captionParse,
+               Self.shouldSkipStructurer(deterministic: captionParse.result,
+                                         audit: captionParse.audit,
+                                         caption: captionText) {
+                debugTrace.append("LLM structurer: skipped — deterministic caption parse is trustworthy")
             } else {
-                debugTrace.append("LLM structurer: kept deterministic parse")
+                progress?("Structuring the recipe…")
+                let structurer = LLMCaptionStructurer(apiKey: apiKey)
+                if let llm = try? await structurer.structure(caption: textToStructure, titleHint: titleHint),
+                   llm.isViable, Self.completeness(llm) >= Self.completeness(result) {
+                    result = llm
+                    debugTrace.append("LLM structurer: \(llm.ingredients.count) ingredients, \(llm.steps.count) steps")
+                } else {
+                    debugTrace.append("LLM structurer: kept deterministic parse")
+                }
             }
         }
 
@@ -440,6 +455,69 @@ actor ExtractionPipeline {
     /// kept so paragraph structure, and therefore header detection, survives.
     static func cleanCaptionForParsing(_ caption: String) -> String {
         SocialTextFilter.clean(caption)
+    }
+
+    // MARK: - Structurer skip-gate
+
+    /// Deterministic-first applied to the structurer: skip the paid Claude call ONLY when
+    /// every signal says the caption parse is trustworthy. The failure direction is always
+    /// spending a call, never silently losing content — each condition guards a concrete
+    /// way the deterministic parser is known to quietly produce a wrong-but-viable recipe.
+    static func shouldSkipStructurer(
+        deterministic result: ExtractionResult,
+        audit: PastedTextExtractor.ParseAudit,
+        caption: String
+    ) -> Bool {
+        // 1. Viable and confidently in the accept band (the parser's full tier is 0.75).
+        guard result.isViable, result.confidence >= ConfidenceThreshold.accept else { return false }
+
+        // 2–3. Exactly one explicit ingredients header and one steps header, both used, and
+        // nothing discarded by the step-region stop — a second "Ingredients…" header means a
+        // multi-component caption this parser silently truncates.
+        guard audit.usedExplicitHeaders,
+              audit.ingredientHeaderCount == 1,
+              audit.stepHeaderCount == 1,
+              audit.linesDiscardedAfterSteps == 0 else { return false }
+
+        // 4. No run of ≥2 consecutive ingredient-shaped step lines — the signature of a
+        // second component's list appended to the steps under an unrecognized header.
+        var run = 0
+        for step in result.steps {
+            if startsWithQuantity(step.text),
+               step.text.split(whereSeparator: \.isWhitespace).count <= 8 {
+                run += 1
+                if run >= 2 { return false }
+            } else {
+                run = 0
+            }
+        }
+
+        // 5. The ingredient list must look like one: ≥60% quantity-led, and no entry shaped
+        // like a numbered step ("1. Boil the pasta" misrouted into the ingredients).
+        let quantityLed = result.ingredients.filter { startsWithQuantity($0.text) }.count
+        guard quantityLed * 10 >= result.ingredients.count * 6 else { return false }
+        guard !result.ingredients.contains(where: {
+            $0.text.range(of: #"^\d+[.)]\s"#, options: .regularExpression) != nil
+        }) else { return false }
+
+        // 6. No truncation evidence — an og:description cut mid-recipe ends in an ellipsis,
+        // and the missing tail is exactly what the structurer (fed the raw caption) or a
+        // richer fetch route might still recover.
+        let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasSuffix("…") || trimmed.hasSuffix("...") { return false }
+
+        return true
+    }
+
+    /// First token is a digit, unicode fraction, or small word-number — the shape a real
+    /// ingredient line leads with.
+    private static func startsWithQuantity(_ text: String) -> Bool {
+        guard let first = text.split(whereSeparator: \.isWhitespace).first else { return false }
+        if let c = first.first, c.isNumber || "½¼¾⅓⅔⅛⅜⅝⅞⅕⅙".contains(c) { return true }
+        let wordNumbers: Set<String> = ["a", "an", "one", "two", "three", "four", "five",
+                                        "six", "seven", "eight", "nine", "ten", "half"]
+        return wordNumbers.contains(
+            first.lowercased().trimmingCharacters(in: .punctuationCharacters))
     }
 
     // MARK: - Web Extraction Chain

@@ -720,6 +720,58 @@ def show_llm_recipe(cap):
 
 
 # --------------------------------------------------------------------------- main
+WORD_NUMBERS = {"a", "an", "one", "two", "three", "four", "five", "six", "seven",
+                "eight", "nine", "ten", "half"}
+
+
+def starts_with_quantity(text):
+    """Mirrors ExtractionPipeline.startsWithQuantity."""
+    toks = text.split()
+    if not toks:
+        return False
+    if toks[0][0].isdigit() or toks[0][0] in "½¼¾⅓⅔⅛⅜⅝⅞⅕⅙":
+        return True
+    return toks[0].lower().strip(".,;:!?'\"()") in WORD_NUMBERS
+
+
+def should_skip_structurer(cap, parsed):
+    """Mirrors ExtractionPipeline.shouldSkipStructurer — the branch-3 skip-gate.
+
+    Skip the paid LLM call only when every signal says the deterministic parse is
+    trustworthy; the failure direction is spending a call, never silent loss."""
+    ings = [i for i, _ in parsed["ingredients"]]
+    steps = parsed["steps"]
+    viable = parsed["title"] != "(none)" and ings and steps
+    # 1. Viable + full tier (3 ingredients / 2 steps mirrors the Swift 0.75 tier).
+    if not (viable and len(ings) >= 3 and len(steps) >= 2):
+        return False
+    # 2-3. Exactly one of each header, document-wide, on the cleaned lines.
+    lines = [l for l in clean_caption(cap).split("\n") if l.strip()]
+    ing_headers = sum(1 for l in lines if is_ing_h(l))
+    step_headers = sum(1 for l in lines if is_step_h(l) and not is_ing_h(l))
+    if ing_headers != 1 or step_headers != 1:
+        return False
+    # 4. No run of >=2 consecutive ingredient-shaped step lines.
+    run = 0
+    for s in steps:
+        if starts_with_quantity(s) and len(s.split()) <= 8:
+            run += 1
+            if run >= 2:
+                return False
+        else:
+            run = 0
+    # 5. Ingredient list looks like one: >=60% quantity-led, no numbered-step shapes.
+    if sum(1 for i in ings if starts_with_quantity(i)) * 10 < len(ings) * 6:
+        return False
+    if any(re.match(r"^\d+[.)]\s", i) for i in ings):
+        return False
+    # 6. No truncation evidence.
+    t = cap.strip()
+    if t.endswith("…") or t.endswith("..."):
+        return False
+    return True
+
+
 def show_recipe(cap, use_llm=False):
     print("\n----- RAW CAPTION -----")
     print(cap if cap else "(empty)")
@@ -735,7 +787,10 @@ def show_recipe(cap, use_llm=False):
     viable = bool(r["title"] != "(none)" and r["ingredients"] and r["steps"])
     print("\nVIABLE RECIPE:", "YES ✅" if viable else "NO ❌ (needs title + ≥1 ingredient + ≥1 step)")
     if use_llm:
-        show_llm_recipe(cap)
+        if should_skip_structurer(cap or "", r):
+            print("\nLLM STRUCTURER: would be SKIPPED (deterministic parse is trustworthy)")
+        else:
+            show_llm_recipe(cap)
 
 
 def main():
