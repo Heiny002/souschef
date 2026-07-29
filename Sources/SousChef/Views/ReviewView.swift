@@ -550,7 +550,7 @@ struct ReviewView: View {
         // Rebuild a result with current edits for validation
         var editedResult = extractionResult
         editedResult.title = title.isEmpty ? nil : title
-        editedResult.ingredients = ingredients.map { RawIngredient(text: $0.text) }
+        editedResult.ingredients = ingredients.map { RawIngredient(text: $0.text, section: $0.section) }
         editedResult.steps = steps.enumerated().map { idx, s in
             RawStep(order: idx + 1, text: s.text, section: s.section)
         }
@@ -629,7 +629,7 @@ struct ReviewView: View {
         recipe.ingredients = ingredients
             .filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
             .enumerated().map { idx, editable in
-                let parsed = parser.parse(raw: editable.text)
+                let parsed = parser.parse(raw: editable.text, section: editable.section)
                 let ingredient = Ingredient(item: parsed.item, rawText: editable.text, order: idx)
                 ingredient.quantity = parsed.quantity
                 ingredient.unit = parsed.unit
@@ -675,10 +675,16 @@ struct ReviewView: View {
 struct EditableIngredient: Identifiable {
     let id = UUID()
     var text: String
+    /// Component this ingredient belongs to ("Steak", "For the sauce"), carried from
+    /// extraction through the review screen to the saved recipe. Without this field the
+    /// section was silently dropped the moment the recipe reached ReviewView, so multi-part
+    /// grouping survived on steps but never on ingredients.
+    var section: String?
     var validationSeverity: ValidationSeverity = .pass
 
     init(raw: RawIngredient) {
         self.text = raw.text
+        self.section = raw.section
     }
 }
 

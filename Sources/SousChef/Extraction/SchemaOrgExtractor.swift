@@ -76,12 +76,23 @@ struct SchemaOrgExtractor {
         result.cookTime = duration(from: dict, key: "cookTime")
         result.totalTime = duration(from: dict, key: "totalTime")
 
-        // Ingredients
+        // Ingredients. Some sites fold group headers ("For the sauce:") into the flat
+        // recipeIngredient array as bare entries; treat a short, quantity-free line ending
+        // in a colon as a section heading for the ingredients that follow, and drop the
+        // header line itself rather than saving it as a phantom ingredient.
         if let raw = dict["recipeIngredient"] as? [Any] {
-            result.ingredients = raw.compactMap { item -> RawIngredient? in
-                guard let text = (item as? String)?.htmlDecoded, !text.isEmpty else { return nil }
-                return RawIngredient(text: text)
+            var currentSection: String?
+            var ingredients: [RawIngredient] = []
+            for item in raw {
+                guard let text = (item as? String)?.htmlDecoded, !text.isEmpty else { continue }
+                if Self.looksLikeGroupHeader(text) {
+                    currentSection = text.trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+                        .nonEmptyOrNil
+                    continue
+                }
+                ingredients.append(RawIngredient(text: text, section: currentSection))
             }
+            result.ingredients = ingredients
         }
 
         // Instructions — multiple formats
@@ -144,11 +155,17 @@ struct SchemaOrgExtractor {
             for obj in objects {
                 let type_ = (obj["@type"] as? String)?.lowercased() ?? ""
                 if type_.contains("howtosection") {
-                    // Section contains itemListElement with HowToStep children
+                    // Section contains itemListElement with HowToStep children. Its "name"
+                    // is the component heading ("For the sauce", "Steak") — carry it onto
+                    // each child step so multi-part web recipes get the same part tabs and
+                    // sequencing that social recipes get.
+                    let sectionName = (obj["name"] as? String)?.htmlDecoded
+                        .trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+                        .nonEmptyOrNil
                     if let items = obj["itemListElement"] as? [[String: Any]] {
                         for item in items {
                             if let text = stepText(from: item), !text.isEmpty {
-                                steps.append(RawStep(order: order, text: text))
+                                steps.append(RawStep(order: order, text: text, section: sectionName))
                                 order += 1
                             }
                         }
@@ -207,11 +224,33 @@ struct SchemaOrgExtractor {
         if result.ingredients.count >= 1 && result.steps.count >= 1 { return 0.6 }
         return 0.2
     }
+
+    /// A short, quantity-free line ending in a colon reads as an ingredient-group heading
+    /// ("For the sauce:", "Marinade:"), not an ingredient. Kept deliberately strict so a
+    /// real ingredient with a trailing colon note ("2 eggs: beaten") isn't swallowed: the
+    /// line must end in the colon and carry no leading quantity.
+    static func looksLikeGroupHeader(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        guard t.hasSuffix(":"), t.count <= 40 else { return false }
+        let words = t.split(whereSeparator: \.isWhitespace)
+        guard words.count <= 5 else { return false }
+        // No leading quantity — headers name a component, they don't measure one.
+        if let first = words.first?.first, first.isNumber || "½¼¾⅓⅔⅛⅜⅝⅞⅕⅙".contains(first) {
+            return false
+        }
+        return true
+    }
 }
 
 // MARK: - HTML Entity Decoding
 
 private extension String {
+    /// nil when empty after trimming — keeps `""` out of section names.
+    var nonEmptyOrNil: String? {
+        let t = trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
     var htmlDecoded: String {
         // Common HTML entities in JSON-LD strings
         var s = self

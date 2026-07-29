@@ -150,16 +150,49 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertEqual(r.confidence, 0.9, accuracy: 0.001)
     }
 
-    func testHowToSectionStepsAreFlattenedAndSectionNamesAreLost() async {
+    func testHowToSectionNamesAreCapturedOntoSteps() async {
         let r = await ExtractionPipeline().extractFromHTML(html: jsonldSections)
         XCTAssertEqual(r.steps.map(\.text),
                        ["Season the steak generously.", "Sear 4 minutes per side.",
                         "Blend parsley, garlic, and oil."])
         XCTAssertEqual(r.steps.map(\.order), [1, 2, 3])
-        // CHARACTERIZATION-BUG (web-sections branch): the HowToSection "name" fields —
-        // "Steak", "Chimichurri" — are read past and dropped, so multi-part web recipes
-        // never get the part tabs that social recipes get.
-        XCTAssertTrue(r.steps.allSatisfy { $0.section == nil })
+        // The HowToSection "name" fields now ride onto each child step, so multi-part web
+        // recipes get the same part tabs and sequencing that social recipes get.
+        XCTAssertEqual(r.steps.map(\.section), ["Steak", "Steak", "Chimichurri"])
+    }
+
+    func testIngredientGroupHeadersBecomeSectionsAndAreNotIngredients() async {
+        let html = """
+        <html><head>
+        <script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Recipe","name":"Layered Dip",
+         "recipeIngredient":["For the base:","1 can refried beans","1 cup sour cream",
+                             "For the topping:","1 cup cheese","2 tbsp salsa"],
+         "recipeInstructions":[{"@type":"HowToStep","text":"Spread the base."},
+                               {"@type":"HowToStep","text":"Add the topping."}]}
+        </script></head></html>
+        """
+        let r = await ExtractionPipeline().extractFromHTML(html: html)
+        // The two "For the …:" lines are headings, not ingredients — dropped from the list,
+        // applied as sections to what follows.
+        XCTAssertEqual(r.ingredients.map(\.text),
+                       ["1 can refried beans", "1 cup sour cream", "1 cup cheese", "2 tbsp salsa"])
+        XCTAssertEqual(r.ingredients.map(\.section),
+                       ["For the base", "For the base", "For the topping", "For the topping"])
+    }
+
+    func testWebComponentSequencingLeadsWithSlowestPart() {
+        // The web path now runs ComponentSequencer: a dough that rests+bakes 30 min should
+        // lead a filling that cooks 5, even when authored second.
+        var r = ExtractionResult(extractionMethod: "schema-org-jsonld")
+        r.title = "Tart"
+        r.ingredients = [RawIngredient(text: "1 cup flour", section: "Crust")]
+        r.steps = [
+            RawStep(order: 1, text: "Cook the filling 5 minutes.", section: "Filling"),
+            RawStep(order: 2, text: "Rest the dough 20 minutes then bake 20 minutes.", section: "Crust"),
+        ]
+        let out = ExtractionPipeline.applyComponentSequencing(to: r)
+        XCTAssertEqual(out.steps.first?.section, "Crust", "slowest component leads")
     }
 
     func testSingleStringInstructionsBecomeOneBlobStep() async {
