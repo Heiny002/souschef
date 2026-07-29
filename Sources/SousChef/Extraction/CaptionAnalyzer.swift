@@ -96,25 +96,44 @@ enum CaptionAnalyzer {
 
     // MARK: - Private Helpers
 
-    /// Extract the first URL from text whose host is NOT a social media platform.
+    /// Affiliate / sponsor / gear shortener hosts — these are the creator's shopping links,
+    /// never the recipe, so they must not be chased as the "direct" recipe URL.
+    private static let sponsorHosts = [
+        "amzn.to", "amazon.", "patreon.", "linktr.ee", "bit.ly", "shopstyle", "rstyle",
+        "ltk.", "liketoknow", "geni.us", "tidd.ly",
+    ]
+
+    /// Extract a direct recipe URL: the first link whose host is neither a social platform
+    /// nor an affiliate/sponsor shortener. A candidate on a line that mentions "recipe" is
+    /// preferred over one that doesn't, so a creator's gear list loses to their recipe link.
     private static func extractDirectURL(from text: String) -> String? {
         let pattern = #"https?://[^\s,)}\]\"']+"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
         let nsRange = NSRange(text.startIndex..., in: text)
         let matches = regex.matches(in: text, options: [], range: nsRange)
 
+        var firstCandidate: String?
         for match in matches {
             guard let range = Range(match.range, in: text) else { continue }
             let urlString = String(text[range])
             guard let url = URL(string: urlString), let host = url.host?.lowercased() else { continue }
 
-            // Skip social media platforms — these aren't recipe links
-            let isSocial = socialHosts.contains(where: { host.contains($0) })
-            if !isSocial {
-                return urlString
-            }
+            if socialHosts.contains(where: { host.contains($0) }) { continue }
+            if sponsorHosts.contains(where: { host.contains($0) }) { continue }
+
+            // Prefer a URL introduced by "recipe" on the same line ("Full recipe: …").
+            let line = lineContaining(range, in: text).lowercased()
+            if line.contains("recipe") { return urlString }
+            if firstCandidate == nil { firstCandidate = urlString }
         }
-        return nil
+        return firstCandidate
+    }
+
+    /// The whole line (between newlines) that contains `range`.
+    private static func lineContaining(_ range: Range<String.Index>, in text: String) -> String {
+        let lower = text[..<range.lowerBound].lastIndex(of: "\n").map { text.index(after: $0) } ?? text.startIndex
+        let upper = text[range.upperBound...].firstIndex(of: "\n") ?? text.endIndex
+        return String(text[lower..<upper])
     }
 
     /// Check if text matches any "link in bio" pattern.

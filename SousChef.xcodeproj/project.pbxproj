@@ -27,6 +27,7 @@
 		FEED0000000000000000CB01 /* LLMCaptionStructurerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CB02 /* LLMCaptionStructurerTests.swift */; };
 		FEED0000000000000000ED01 /* ComponentSequencerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000ED02 /* ComponentSequencerTests.swift */; };
 		FEED0000000000000000FA11 /* SocialTextFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000FA12 /* SocialTextFilterTests.swift */; };
+		FEED0000000000000000FB03 /* YouTubeExtractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000FB04 /* YouTubeExtractionTests.swift */; };
 		FEED0000000000000000FB01 /* ExtractionCharacterizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000FB02 /* ExtractionCharacterizationTests.swift */; };
 		FEED0000000000000000BB21 /* PerplexitySearcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000BB22 /* PerplexitySearcherTests.swift */; };
 		FEED0000000000000000FC11 /* ApplianceDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000FC12 /* ApplianceDetectorTests.swift */; };
@@ -183,6 +184,7 @@
 		FEED0000000000000000CB02 /* LLMCaptionStructurerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMCaptionStructurerTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000ED02 /* ComponentSequencerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentSequencerTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000FA12 /* SocialTextFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialTextFilterTests.swift; sourceTree = "<group>"; };
+		FEED0000000000000000FB04 /* YouTubeExtractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeExtractionTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000FB02 /* ExtractionCharacterizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionCharacterizationTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000BB22 /* PerplexitySearcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerplexitySearcherTests.swift; sourceTree = "<group>"; };
 		FEED0000000000000000FC12 /* ApplianceDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplianceDetectorTests.swift; sourceTree = "<group>"; };
@@ -352,6 +354,7 @@
 				FEED0000000000000000CB02 /* LLMCaptionStructurerTests.swift */,
 				FEED0000000000000000ED02 /* ComponentSequencerTests.swift */,
 				FEED0000000000000000FA12 /* SocialTextFilterTests.swift */,
+				FEED0000000000000000FB04 /* YouTubeExtractionTests.swift */,
 				FEED0000000000000000FB02 /* ExtractionCharacterizationTests.swift */,
 				FEED0000000000000000BB22 /* PerplexitySearcherTests.swift */,
 				FEED0000000000000000FC12 /* ApplianceDetectorTests.swift */,
@@ -703,6 +706,7 @@
 				FEED0000000000000000CB01 /* LLMCaptionStructurerTests.swift in Sources */,
 				FEED0000000000000000ED01 /* ComponentSequencerTests.swift in Sources */,
 				FEED0000000000000000FA11 /* SocialTextFilterTests.swift in Sources */,
+				FEED0000000000000000FB03 /* YouTubeExtractionTests.swift in Sources */,
 				FEED0000000000000000FB01 /* ExtractionCharacterizationTests.swift in Sources */,
 				FEED0000000000000000BB21 /* PerplexitySearcherTests.swift in Sources */,
 				FEED0000000000000000FC11 /* ApplianceDetectorTests.swift in Sources */,

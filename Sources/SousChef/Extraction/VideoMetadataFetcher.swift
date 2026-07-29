@@ -25,7 +25,7 @@ actor VideoMetadataFetcher {
         case .tikTok:
             return try await fetchOEmbed(endpoint: "https://www.tiktok.com/oembed", videoURL: videoURL)
         case .youTube:
-            return try await fetchOEmbed(endpoint: "https://www.youtube.com/oembed", videoURL: videoURL)
+            return try await fetchYouTube(videoURL: videoURL)
         case .instagram:
             // Ordered by how reliably each survives Instagram's anti-scraping (the chain
             // InstaFix uses in production for Discord/Telegram embeds):
@@ -488,11 +488,168 @@ actor VideoMetadataFetcher {
             thumbnailURL: thumbnailURL
         )
     }
+
+    // MARK: - YouTube
+
+    /// YouTube's oEmbed returns only a title — the recipe usually lives in the video
+    /// DESCRIPTION, which is reachable only from the watch page. Fetch that, pull the
+    /// description out of the inlined `ytInitialPlayerResponse`, and clean it of chapter
+    /// timestamps and sponsor/gear boilerplate. Fall back to oEmbed WITHOUT a caption when
+    /// the watch page can't be read — a bare title must never become structurer input or a
+    /// fake one-line recipe.
+    private func fetchYouTube(videoURL: String) async throws -> VideoMetadata {
+        if let id = Self.youtubeVideoID(from: videoURL),
+           let html = try? await fetchYouTubeWatchPage(videoID: id),
+           let details = Self.youtubeVideoDetails(fromWatchPageHTML: html) {
+            let cleaned = YouTubeDescriptionCleaner.clean(details.description)
+            if cleaned.count >= 40 {
+                return VideoMetadata(title: details.title, authorName: details.author,
+                                     authorURL: nil, caption: cleaned,
+                                     thumbnailURL: details.thumbnailURL)
+            }
+        }
+        let meta = try await fetchOEmbed(endpoint: "https://www.youtube.com/oembed", videoURL: videoURL)
+        return VideoMetadata(title: meta.title, authorName: meta.authorName,
+                             authorURL: meta.authorURL, caption: nil,
+                             thumbnailURL: meta.thumbnailURL)
+    }
+
+    private func fetchYouTubeWatchPage(videoID: String) async throws -> String {
+        guard let url = URL(string: "https://www.youtube.com/watch?v=\(videoID)") else {
+            throw VideoMetadataError.malformedResponse
+        }
+        var request = URLRequest(url: url)
+        // A desktop UA gets the full watch page (not the app-redirect stub); the CONSENT
+        // cookie skips the EU consent interstitial that otherwise replaces the page.
+        request.setValue(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            forHTTPHeaderField: "User-Agent")
+        request.setValue("CONSENT=YES+1", forHTTPHeaderField: "Cookie")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let html = String(data: data, encoding: .utf8) else {
+            throw VideoMetadataError.apiError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        return html
+    }
+
+    /// Video details pulled from a watch page's `ytInitialPlayerResponse`. Pure + testable.
+    struct YouTubeDetails: Sendable {
+        let title: String?
+        let description: String
+        let author: String?
+        let thumbnailURL: String?
+    }
+
+    /// Extract `videoDetails` (title, shortDescription, author, thumbnail) from watch-page
+    /// HTML. Returns nil when the player-response object isn't present or has no description.
+    static func youtubeVideoDetails(fromWatchPageHTML html: String) -> YouTubeDetails? {
+        guard let objectText = balancedJSONObject(in: html, after: "ytInitialPlayerResponse"),
+              let data = objectText.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let details = root["videoDetails"] as? [String: Any] else { return nil }
+        let description = (details["shortDescription"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !description.isEmpty else { return nil }
+        var thumbnailURL: String?
+        if let thumb = details["thumbnail"] as? [String: Any],
+           let thumbs = thumb["thumbnails"] as? [[String: Any]] {
+            thumbnailURL = thumbs.last?["url"] as? String
+        }
+        return YouTubeDetails(title: (details["title"] as? String)?.nonEmpty,
+                              description: description,
+                              author: (details["author"] as? String)?.nonEmpty,
+                              thumbnailURL: thumbnailURL)
+    }
+
+    /// The 11-character video id from any YouTube URL form (watch?v=, youtu.be/, shorts/,
+    /// embed/, live/). Returns nil when no id is present.
+    static func youtubeVideoID(from urlString: String) -> String? {
+        for pattern in [#"[?&]v=([A-Za-z0-9_-]{11})"#,
+                        #"youtu\.be/([A-Za-z0-9_-]{11})"#,
+                        #"/(?:shorts|embed|live)/([A-Za-z0-9_-]{11})"#] {
+            if let re = try? NSRegularExpression(pattern: pattern),
+               let m = re.firstMatch(in: urlString, range: NSRange(urlString.startIndex..., in: urlString)),
+               let r = Range(m.range(at: 1), in: urlString) {
+                return String(urlString[r])
+            }
+        }
+        return nil
+    }
+
+    /// The first balanced `{…}` object that appears after `marker`, quote- and escape-aware
+    /// so a brace inside a JSON string (common in a video description) doesn't miscount
+    /// depth. Only `=` and whitespace may sit between the marker and the opening brace.
+    static func balancedJSONObject(in text: String, after marker: String) -> String? {
+        guard let markerRange = text.range(of: marker) else { return nil }
+        var idx = markerRange.upperBound
+        while idx < text.endIndex, text[idx] != "{" {
+            let c = text[idx]
+            guard c == "=" || c.isWhitespace else { return nil }
+            idx = text.index(after: idx)
+        }
+        guard idx < text.endIndex else { return nil }
+        var depth = 0, inString = false, escaped = false
+        var out = ""
+        while idx < text.endIndex {
+            let c = text[idx]
+            out.append(c)
+            if escaped { escaped = false }
+            else if c == "\\" { escaped = true }
+            else if c == "\"" { inString.toggle() }
+            else if !inString {
+                if c == "{" { depth += 1 }
+                else if c == "}" { depth -= 1; if depth == 0 { return out } }
+            }
+            idx = text.index(after: idx)
+        }
+        return nil
+    }
+}
+
+/// Cleans a YouTube video description down to just the recipe text: drops chapter-timestamp
+/// lines and the sponsor / gear / affiliate boilerplate that pads most cooking videos.
+enum YouTubeDescriptionCleaner {
+    private static let boilerplateMarkers = [
+        "my gear", "gear i use", "equipment i use", "the gear", "kitchen gear",
+        "follow me", "follow along", "subscribe", "sponsored by", "this video is sponsored",
+        "thanks to", "affiliate", "shop my", "my amazon", "amazon storefront", "patreon",
+        "merch", "music:", "music by", "song:", "as an amazon associate", "get my",
+        "join this channel", "business inquiries", "#ad", "#sponsored",
+    ]
+    private static let sponsorHosts = [
+        "amzn.to", "amazon.", "patreon.", "linktr.ee", "bit.ly", "shopstyle", "rstyle",
+        "ltk.", "liketoknow", "geni.us", "tidd.ly",
+    ]
+
+    static func clean(_ description: String) -> String {
+        var kept: [String] = []
+        for rawLine in description.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { kept.append(""); continue }
+            let lower = line.lowercased()
+            // Chapter timestamps ("0:00 Intro", "12:34 - Assembly") are video navigation.
+            if line.range(of: #"^\d{1,2}:\d{2}(:\d{2})?\b"#, options: .regularExpression) != nil { continue }
+            if sponsorHosts.contains(where: { lower.contains($0) }) { continue }
+            if boilerplateMarkers.contains(where: { lower.hasPrefix($0) }) { continue }
+            kept.append(line)
+        }
+        return kept.joined(separator: "\n")
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 // MARK: - HTML entity decoding
 
 private extension String {
+    /// nil when empty after trimming.
+    var nonEmpty: String? {
+        let t = trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
     var htmlEntityDecoded: String {
         var s = self
         let entities: [(String, String)] = [
