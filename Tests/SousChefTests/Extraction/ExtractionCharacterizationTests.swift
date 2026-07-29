@@ -280,15 +280,17 @@ final class ExtractionCharacterizationTests: XCTestCase {
 
     // MARK: - Pasted text
 
-    func testSecondComponentAfterStepsIsSilentlyDiscarded() {
+    func testSecondComponentAfterStepsIsRecovered() {
         let r = PastedTextExtractor().extract(text: twoComponentCaption)
-        XCTAssertEqual(r.ingredients.map(\.text), ["200g spaghetti", "2 eggs"])
-        XCTAssertEqual(r.steps.count, 2)
-        // CHARACTERIZATION-BUG (paste-scan-depth branch): the step region stops at the next
-        // ingredient header and everything after — the entire sauce component — vanishes
-        // without a trace. The guanciale never reaches the recipe.
+        // The sauce component (its ingredient AND its step) is now recovered and tagged with
+        // a section, instead of vanishing when the step region hit the second header.
         let allText = (r.ingredients.map(\.text) + r.steps.map(\.text)).joined(separator: " ")
-        XCTAssertFalse(allText.localizedCaseInsensitiveContains("guanciale"))
+        XCTAssertTrue(allText.localizedCaseInsensitiveContains("guanciale"),
+                      "the sauce component must be recovered, not discarded")
+        XCTAssertEqual(r.ingredients.first(where: { $0.text.localizedCaseInsensitiveContains("guanciale") })?.section,
+                       "sauce")
+        XCTAssertTrue(r.steps.contains { $0.text.localizedCaseInsensitiveContains("crisp") },
+                      "the sauce's step is recovered too")
     }
 
     // MARK: - Noise filtering

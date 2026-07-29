@@ -172,24 +172,85 @@ struct PastedTextExtractor {
         var steps: [RawStep] = []
         if let s = stepHeaderIdx {
             var block: [String] = []
+            var secondComponentStart: Int?
             for i in (s + 1)..<lines.count {
                 let line = lines[i]
                 if line.isEmpty { continue }
                 if Self.isIngredientHeader(line) {
-                    // A second component's ingredient list starts here; this parser stops
-                    // and everything from this line on is dropped. Record the loss so the
-                    // skip-gate knows this caption is NOT one to trust deterministically.
-                    audit.linesDiscardedAfterSteps = lines[i...].filter { !$0.isEmpty }.count
+                    // A second component's ingredient list starts here (a sauce, a garnish).
+                    secondComponentStart = i
                     break
                 }
                 block.append(line)
             }
             steps = Self.assembleSteps(from: block)
+
+            // Recover the trailing components instead of discarding them — the guanciale in
+            // "…Steps:… Ingredients for the sauce:…" used to vanish entirely.
+            if let start = secondComponentStart {
+                let (moreIngredients, moreSteps) = Self.parseTrailingComponents(lines: lines, from: start)
+                ingredients.append(contentsOf: moreIngredients)
+                steps.append(contentsOf: moreSteps)
+                // Still flag the caption as multi-component so the structurer skip-gate stays
+                // conservative — deterministic multi-part recovery is newer and worth checking.
+                audit.linesDiscardedAfterSteps = lines[start...].filter { !$0.isEmpty }.count
+            }
         } else if !inlineStepLines.isEmpty {
             steps = Self.assembleSteps(from: inlineStepLines)
         }
 
+        // Re-number the merged step sequence so recovered components don't collide.
+        steps = steps.enumerated().map { RawStep(order: $0 + 1, text: $1.text, section: $1.section) }
+
         return (title, ingredients, steps)
+    }
+
+    /// Parse a run of trailing "Ingredients …:/Steps:…" component blocks, tagging each
+    /// component's ingredients and steps with a section derived from its ingredient header
+    /// ("Ingredients for the sauce" → "sauce"). Handles any number of components.
+    private static func parseTrailingComponents(lines: [String], from start: Int) -> ([RawIngredient], [RawStep]) {
+        var ingredients: [RawIngredient] = []
+        var steps: [RawStep] = []
+        var i = start
+        while i < lines.count {
+            guard isIngredientHeader(lines[i]) else { i += 1; continue }
+            let section = sectionName(fromIngredientHeader: lines[i])
+            i += 1
+            // Ingredient lines until a step header or the next component's ingredient header.
+            while i < lines.count {
+                let line = lines[i]
+                if line.isEmpty { i += 1; continue }
+                if isStepHeader(line) || isIngredientHeader(line) { break }
+                ingredients.append(RawIngredient(text: stripMarker(line), section: section))
+                i += 1
+            }
+            // Optional step header + step lines until the next component.
+            if i < lines.count, isStepHeader(lines[i]) {
+                i += 1
+                var block: [String] = []
+                while i < lines.count {
+                    let line = lines[i]
+                    if !line.isEmpty, isIngredientHeader(line) { break }
+                    if !line.isEmpty { block.append(line) }
+                    i += 1
+                }
+                for step in assembleSteps(from: block) {
+                    steps.append(RawStep(order: 0, text: step.text, section: section))
+                }
+            }
+        }
+        return (ingredients, steps)
+    }
+
+    /// The component name embedded in an ingredient header, or nil for a bare "Ingredients:".
+    /// "Ingredients for the sauce" → "sauce"; "Sauce ingredients" → "sauce".
+    private static func sectionName(fromIngredientHeader line: String) -> String? {
+        var s = normalizeHeader(line)   // lowercased, markers/colon stripped
+        for prefix in ["ingredients for the ", "ingredients for ", "ingredients ", "ingredient "]
+        where s.hasPrefix(prefix) { s = String(s.dropFirst(prefix.count)); break }
+        if s.hasSuffix(" ingredients") { s = String(s.dropLast(" ingredients".count)) }
+        s = s.trimmingCharacters(in: .whitespaces)
+        return (s.isEmpty || s == "ingredients" || s == "ingredient") ? nil : s
     }
 
     // MARK: - Heuristic parse (no headers)
