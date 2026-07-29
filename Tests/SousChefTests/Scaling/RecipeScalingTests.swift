@@ -135,4 +135,19 @@ final class RecipeScalingTests: XCTestCase {
         XCTAssertNil(RecipeYield.parse(""))
         XCTAssertNil(RecipeYield.parse(nil))
     }
+
+    // MARK: - Snap away from zero (think-tank branch 12)
+
+    func testTinyScaledAmountDoesNotRoundToZero() {
+        let tsp = Quantity.parse(quantity: "1", unit: "teaspoon")!
+        let tiny = QuantityFormatter.string(tsp.scaled(by: 0.05))
+        XCTAssertFalse(tiny.hasPrefix("0 "), "a real amount must never scale down to '0': \(tiny)")
+        XCTAssertTrue(tiny.contains("⅛"), "snaps up to the smallest culinary fraction: \(tiny)")
+    }
+
+    func testNormalFractionsStillSnapNormally() {
+        let half = Quantity.parse(quantity: "1", unit: "cup")!
+        XCTAssertEqual(QuantityFormatter.string(half.scaled(by: 0.5)), "½ cup")
+        XCTAssertEqual(QuantityFormatter.string(half.scaled(by: 0.25)), "¼ cup")
+    }
 }

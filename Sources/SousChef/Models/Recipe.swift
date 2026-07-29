@@ -9,6 +9,10 @@ final class Recipe {
     var sourceType: String       // "web", "tiktok", "instagram", "youtube", "manual"
     var thumbnailURL: String?    // recipe photo URL captured at import (optional → lightweight migration)
     var recipeYield: String?
+    /// The serving count the recipe's amounts are written for, when the user has confirmed it
+    /// (or it was parsed unambiguously). Replaces silently assuming "serves 4" for a recipe
+    /// with no yield. Optional with a nil default → SwiftData lightweight migration.
+    var confirmedServings: Int? = nil
     var prepTime: Int?           // seconds
     var cookTime: Int?           // seconds
     var totalTime: Int?          // seconds

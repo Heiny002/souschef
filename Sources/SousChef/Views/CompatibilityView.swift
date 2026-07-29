@@ -166,6 +166,7 @@ struct CompatibilityView: View {
             extractionMethod: recipe.extractionMethod
         )
         adapted.recipeYield = recipe.recipeYield
+        adapted.confirmedServings = recipe.confirmedServings   // the adapted copy scales the same
         adapted.prepTime = recipe.prepTime
         adapted.cookTime = recipe.cookTime
         adapted.totalTime = recipe.totalTime

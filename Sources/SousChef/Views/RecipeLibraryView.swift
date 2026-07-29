@@ -581,9 +581,11 @@ struct RecipeDetailView: View {
 
     // MARK: - Servings scaling
 
-    /// The recipe's own yield count (e.g. "4 servings" → 4), defaulting to 4 when the yield is
-    /// missing or non-numeric so the scaler always has a base to work from.
-    private var baseYield: Int { RecipeYield.parse(recipe.recipeYield)?.count ?? 4 }
+    /// The recipe's own yield count. Prefers a user-confirmed base, then the parsed yield
+    /// ("4 servings" → 4), and only then falls back to 4 so the scaler always has a base.
+    private var baseYield: Int {
+        recipe.confirmedServings ?? RecipeYield.parse(recipe.recipeYield)?.count ?? 4
+    }
 
     /// The noun to label the stepper with — "servings", or "cookies" for "36 cookies".
     private var yieldNoun: String { RecipeYield.parse(recipe.recipeYield)?.noun ?? "servings" }

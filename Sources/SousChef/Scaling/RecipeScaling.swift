@@ -220,6 +220,12 @@ enum QuantityFormatter {
             best = entry; bestDist = abs(frac - entry.value)
         }
         if best.value >= 1 { return (Int(whole) + 1, fractionTable[0]) }  // snapped up
+        // Never round a real, positive amount down to nothing. Scaling 1 tsp to a small
+        // fraction and showing "0 teaspoons" is wrong and useless — snap up to the smallest
+        // culinary fraction (⅛) instead so the cook still adds a pinch.
+        if Int(whole) == 0, best.glyph.isEmpty, value > 0 {
+            return (0, fractionTable[1])   // ⅛
+        }
         return (Int(whole), best)
     }
 
