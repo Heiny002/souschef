@@ -499,10 +499,10 @@ def split_inline_numbered(line):
     return parts if len(parts) > 1 else [strip_marker(line)]
 
 
-CTA = ("save this", "save it", "save for later", "follow for more", "follow me",
+CTA = ("save this", "save these", "save it", "save for later", "follow for more", "follow me",
        "comment below", "comment ", "tag a friend", "tag someone", "double tap",
        "like and", "share this", "link in bio", "recipe in bio", "full recipe",
-       "check out my", "subscribe", "hit the", "let me know", "who would you",
+       "check out my", "check these out", "subscribe", "hit the", "let me know", "who would you",
        "watch till", "part 1", "new video")
 # "drop a " needs its object checked: "drop a comment" is bait, "drop a dollop" is cooking.
 ENGAGEMENT_DROP_OBJECTS = {"comment", "comments", "like", "follow", "rating", "review",
@@ -517,7 +517,8 @@ def is_engagement_drop(core):
     obj = core[len("drop a "):].split()[0] if core[len("drop a "):].split() else ""
     return obj.rstrip(".,!?:;'\"") in ENGAGEMENT_DROP_OBJECTS
 NARRATIVE = ("the kind of", "this is the", "trust me", "obsessed with", "my favorite",
-             "you guys", "i can't stop", "pov:", "when you", "nothing beats", "if you love")
+             "you guys", "i can't stop", "pov:", "when you", "nothing beats", "if you love",
+             "looking for")
 
 
 MAX_CTA_WORDS = 12

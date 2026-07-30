@@ -61,10 +61,10 @@ enum SocialTextFilter {
     /// "drop a " is handled separately (see `isEngagementDrop`): it needs to know what is
     /// being dropped, because "Drop a dollop of sour cream" is a real serving instruction.
     private static let ctaPhrases = [
-        "save this", "save it", "save for later", "follow for more", "follow me",
+        "save this", "save these", "save it", "save for later", "follow for more", "follow me",
         "comment below", "comment ", "tag a friend", "tag someone",
         "double tap", "like and", "share this", "link in bio", "recipe in bio",
-        "full recipe", "check out my", "subscribe", "hit the", "let me know",
+        "full recipe", "check out my", "check these out", "subscribe", "hit the", "let me know",
         "who would you", "watch till", "part 1", "new video",
     ]
 
@@ -88,6 +88,7 @@ enum SocialTextFilter {
     private static let narrativeOpeners = [
         "the kind of", "this is the", "trust me", "obsessed with", "my favorite",
         "you guys", "i can't stop", "pov:", "when you", "nothing beats", "if you love",
+        "looking for",
     ]
 
     /// A CTA phrase only condemns a line this short. Matching is by prefix, so without a cap

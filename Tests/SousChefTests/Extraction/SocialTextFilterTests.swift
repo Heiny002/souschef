@@ -165,6 +165,17 @@ final class SocialTextFilterTests: XCTestCase {
         XCTAssertEqual(SocialTextFilter.cleanEntry("#a #b"), "#a #b")
     }
 
+    func testCollectionPostCTAVariantsAreNoise() {
+        // From a live collection post: "save these" and "check these out" were missing from
+        // the phrase list, so app-promo lines became recipe "steps" and inflated the caption
+        // parse's completeness against the slides.
+        XCTAssertTrue(SocialTextFilter.isNoiseLine("Save these recipes easily with Youmeal !!!"))
+        XCTAssertTrue(SocialTextFilter.isNoiseLine("Check these out! 👀"))
+        XCTAssertTrue(SocialTextFilter.isNoiseLine("Looking for easy dinner ideas?"))
+        // Culinary "save" survives — only the engagement phrasings are listed.
+        XCTAssertFalse(SocialTextFilter.isNoiseLine("Save the pan drippings for the gravy"))
+    }
+
     func testLeadingTagRunIsStripped() {
         // A hashtag-prefixed SEO line survived whole when only trailing runs were stripped,
         // and became a recipe "step" (live failure on a miso-chicken post).
