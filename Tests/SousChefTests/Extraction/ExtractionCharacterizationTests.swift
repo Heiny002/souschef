@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 @testable import SousChef
 
@@ -343,6 +344,51 @@ final class ExtractionCharacterizationTests: XCTestCase {
         // Long but one line and zero digits: marketing prose, not a recipe.
         let hook = String(repeating: "This is the coziest bowl you will ever make and you have to try it ", count: 3)
         XCTAssertFalse(ExtractionPipeline.captionWorthStructuring(hook))
+    }
+
+    // MARK: - Two-column OCR assembly
+
+    /// Vision-normalized box: origin bottom-left, so higher on the page = larger y.
+    private func box(x: CGFloat, y: CGFloat, w: CGFloat) -> CGRect {
+        CGRect(x: x, y: y, width: w, height: 0.04)
+    }
+
+    func testTwoColumnSlideReadsColumnByColumn() {
+        // Ingredients left, method right — a plain row sort interleaves L1 R1 L2 R2…
+        var lines: [(box: CGRect, text: String)] = []
+        for (i, t) in ["1 cup flour", "2 eggs", "1 tsp salt", "1 cup milk"].enumerated() {
+            lines.append((box(x: 0.05, y: 0.8 - CGFloat(i) * 0.1, w: 0.40), t))
+        }
+        for (i, t) in ["Method", "Whisk the eggs", "Fold in flour", "Rest the batter"].enumerated() {
+            lines.append((box(x: 0.55, y: 0.8 - CGFloat(i) * 0.1, w: 0.40), t))
+        }
+        let out = ImageTextRecognizer.assembleLines(lines.shuffled())
+        XCTAssertEqual(out,
+                       "1 cup flour\n2 eggs\n1 tsp salt\n1 cup milk\n\n"
+                       + "Method\nWhisk the eggs\nFold in flour\nRest the batter")
+        XCTAssertFalse(out.hasPrefix("1 cup flour\nMethod"), "columns must not interleave")
+    }
+
+    func testSpanningTitleSitsAboveTheColumns() {
+        var lines: [(box: CGRect, text: String)] = [(box(x: 0.1, y: 0.95, w: 0.8), "PANCAKES")]
+        for (i, t) in ["1 cup flour", "2 eggs", "1 tsp salt"].enumerated() {
+            lines.append((box(x: 0.05, y: 0.8 - CGFloat(i) * 0.1, w: 0.40), t))
+        }
+        for (i, t) in ["Whisk the eggs", "Fold in flour", "Cook until golden"].enumerated() {
+            lines.append((box(x: 0.55, y: 0.8 - CGFloat(i) * 0.1, w: 0.40), t))
+        }
+        let out = ImageTextRecognizer.assembleLines(lines)
+        XCTAssertTrue(out.hasPrefix("PANCAKES\n\n1 cup flour"),
+                      "the full-width title leads, then the left column: \(out)")
+    }
+
+    func testSingleColumnSlideKeepsPlainRowOrder() {
+        let lines: [(box: CGRect, text: String)] = (0..<8).map { i in
+            (box(x: 0.1, y: 0.9 - CGFloat(i) * 0.1, w: 0.5), "line\(i)")
+        }
+        XCTAssertEqual(ImageTextRecognizer.assembleLines(lines),
+                       (0..<8).map { "line\($0)" }.joined(separator: "\n"),
+                       "no gutter → behavior unchanged")
     }
 
     // MARK: - Instagram logged-out sidecar (embed gql_data)

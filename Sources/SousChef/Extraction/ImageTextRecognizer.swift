@@ -77,21 +77,83 @@ enum ImageTextRecognizer {
         }
     }
 
-    /// Order recognized-text observations into lines. Vision's origin is bottom-left, so a
-    /// larger normalized Y is higher on the page; group by row (within a small Y tolerance)
-    /// and read left-to-right within a row.
+    /// Order recognized-text observations into reading order, column-aware.
     private static func assemble(_ observations: [VNRecognizedTextObservation]) -> String {
-        let lines = observations
-            .compactMap { obs -> (y: CGFloat, x: CGFloat, text: String)? in
-                guard let top = obs.topCandidates(1).first else { return nil }
-                let box = obs.boundingBox
-                return (box.origin.y, box.origin.x, top.string)
+        let lines = observations.compactMap { obs -> (box: CGRect, text: String)? in
+            guard let top = obs.topCandidates(1).first else { return nil }
+            return (obs.boundingBox, top.string)
+        }
+        return assembleLines(lines)
+    }
+
+    /// Reading order for recognized lines. A two-column recipe card (ingredients left, method
+    /// right — the dominant recipe-slide layout) interleaves badly under a plain row sort:
+    /// Vision reads straight across the gutter, so the parser sees alternating fragments of
+    /// both columns. Instead: merge the lines' horizontal extents; a persistent vertical
+    /// gutter splits the page into columns, each read top-to-bottom, left column first.
+    /// Lines spanning most of the page width (the title banner) sit above the columns.
+    /// Falls back to the plain row sort whenever there is no CONFIDENT gutter — a false
+    /// split reorders real text, so the detector must earn its keep.
+    ///
+    /// Boxes are Vision-normalized: origin bottom-left, so a larger Y is higher on the page.
+    static func assembleLines(_ lines: [(box: CGRect, text: String)]) -> String {
+        func rowOrder(_ ls: [(box: CGRect, text: String)]) -> [String] {
+            ls.sorted { a, b in
+                if abs(a.box.origin.y - b.box.origin.y) > 0.02 { return a.box.origin.y > b.box.origin.y }
+                return a.box.origin.x < b.box.origin.x
+            }.map(\.text)
+        }
+        let plain = rowOrder(lines).joined(separator: "\n")
+        guard lines.count >= 6 else { return plain }
+
+        // A line spanning most of the width bridges any gutter (the title) — set it aside so
+        // it can't collapse the column detection, and emit it above the columns.
+        let banners = lines.filter { $0.box.width >= 0.6 }
+        let body = lines.filter { $0.box.width < 0.6 }
+        guard body.count >= 6 else { return plain }
+
+        // Merge horizontal extents into runs; a gap >= gutter between runs is a column split.
+        let gutter: CGFloat = 0.03
+        var runs: [(minX: CGFloat, maxX: CGFloat)] = []
+        for line in body.sorted(by: { $0.box.minX < $1.box.minX }) {
+            if let last = runs.last, line.box.minX <= last.maxX + gutter {
+                runs[runs.count - 1].maxX = max(last.maxX, line.box.maxX)
+            } else {
+                runs.append((line.box.minX, line.box.maxX))
             }
-            .sorted { a, b in
-                if abs(a.y - b.y) > 0.02 { return a.y > b.y }
-                return a.x < b.x
+        }
+        guard runs.count >= 2 else { return plain }
+
+        // Assign lines to runs; a run only counts as a column with >= 3 lines (stray marks —
+        // page numbers, watermarks — must not manufacture a column). Lines from non-qualifying
+        // runs are folded into the nearest real column so no text is lost.
+        var columns: [[(box: CGRect, text: String)]] = Array(repeating: [], count: runs.count)
+        for line in body {
+            let idx = runs.indices.min {
+                abs(line.box.midX - (runs[$0].minX + runs[$0].maxX) / 2)
+                    < abs(line.box.midX - (runs[$1].minX + runs[$1].maxX) / 2)
+            } ?? 0
+            columns[idx].append(line)
+        }
+        let qualifying = columns.indices.filter { columns[$0].count >= 3 }
+        guard qualifying.count >= 2 else { return plain }
+        var grouped: [Int: [(box: CGRect, text: String)]] = [:]
+        for (i, column) in columns.enumerated() {
+            for line in column {
+                let target = qualifying.contains(i) ? i : qualifying.min {
+                    abs(line.box.midX - (runs[$0].minX + runs[$0].maxX) / 2)
+                        < abs(line.box.midX - (runs[$1].minX + runs[$1].maxX) / 2)
+                }!
+                grouped[target, default: []].append(line)
             }
-        return lines.map(\.text).joined(separator: "\n")
+        }
+
+        var pieces: [String] = []
+        if !banners.isEmpty { pieces.append(rowOrder(banners).joined(separator: "\n")) }
+        for i in qualifying.sorted() {
+            pieces.append(rowOrder(grouped[i] ?? []).joined(separator: "\n"))
+        }
+        return pieces.joined(separator: "\n\n")
     }
 }
 
