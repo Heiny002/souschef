@@ -63,8 +63,8 @@ def load_cookies(path):
     return jar
 
 
-def _gql_caption_from_embed(html: str):
-    """Pull the caption out of the embed page's escaped gql_data blob."""
+def _gql_from_embed(html: str):
+    """The parsed gql_data dict from the embed page's escaped blob, or None."""
     marker = '\\"gql_data\\":'
     pos = html.find(marker)
     if pos == -1:
@@ -87,14 +87,74 @@ def _gql_caption_from_embed(html: str):
         cands.append(html[start:hp])
     for frag in cands:
         try:
-            gql = json.loads(json.loads('"' + frag + '"'))
-            media = gql.get("shortcode_media", {})
-            edges = (media.get("edge_media_to_caption") or {}).get("edges") or []
-            if edges:
-                return edges[0]["node"]["text"]
+            return json.loads(json.loads('"' + frag + '"'))
         except Exception:
             continue
     return None
+
+
+def _gql_caption_from_embed(html: str):
+    """Pull the caption out of the embed page's escaped gql_data blob."""
+    gql = _gql_from_embed(html)
+    if not gql:
+        return None
+    media = gql.get("shortcode_media", {})
+    edges = (media.get("edge_media_to_caption") or {}).get("edges") or []
+    return edges[0]["node"]["text"] if edges else None
+
+
+def sidecar_urls_from_gql(gql):
+    """Mirrors InstagramAuth.sidecarImageURLs — carousel slide URLs, largest per slide."""
+    media = gql.get("shortcode_media") or gql.get("xdt_shortcode_media") or {}
+    edges = (media.get("edge_sidecar_to_children") or {}).get("edges") or []
+    urls = []
+    for edge in edges:
+        node = edge.get("node") or {}
+        res = node.get("display_resources") or []
+        best = max(res, key=lambda r: r.get("config_width", 0) * r.get("config_height", 0),
+                   default=None)
+        if best and best.get("src"):
+            urls.append(best["src"])
+        elif node.get("display_url"):
+            urls.append(node["display_url"])
+    return urls
+
+
+def carousel_report(code, cookies):
+    """Mirrors InstagramAuth.fetchCarouselImageURLs' two rungs, so a device-side
+    'carousel: 0 text slides' can be traced to the failing rung from the desktop."""
+    print("\n=== CAROUSEL SLIDES ===")
+    urls1 = []
+    try:
+        mid = shortcode_to_media_id(code)
+        resp = _http_get(f"https://www.instagram.com/api/v1/media/{mid}/info/",
+                         {"User-Agent": UA, "X-IG-App-ID": "936619743392459",
+                          "Referer": f"https://www.instagram.com/p/{code}/",
+                          "X-CSRFToken": cookies.get("csrftoken", "")}, cookies)
+        data = json.loads(_read(resp))
+        item = (data.get("items") or [{}])[0]
+        for slide in item.get("carousel_media") or []:
+            cands = (slide.get("image_versions2") or {}).get("candidates") or []
+            best = max(cands, key=lambda c: c.get("width", 0) * c.get("height", 0), default=None)
+            if best and best.get("url"):
+                urls1.append(best["url"])
+        print(f"  rung 1 authed media-info : {len(urls1)} slide URLs")
+    except Exception as e:
+        print(f"  rung 1 authed media-info : failed ({e})")
+    try:
+        # Deliberately cookie-less: this mirrors the app's logged-out fallback.
+        resp = _http_get(f"https://www.instagram.com/p/{code}/embed/captioned/",
+                         {"User-Agent": UA, "Referer": "https://www.instagram.com/",
+                          "Accept-Language": "en-US,en;q=0.9"}, {})
+        html = _read(resp).decode("utf-8", "ignore")
+        gql = _gql_from_embed(html)
+        urls2 = sidecar_urls_from_gql(gql) if gql else []
+        note = "" if gql else "  (no gql_data in embed page — login-walled)"
+        print(f"  rung 2 embed sidecar     : {len(urls2)} slide URLs{note}")
+        for u in urls2[:3]:
+            print("     ", u[:100])
+    except Exception as e:
+        print(f"  rung 2 embed sidecar     : failed ({e})")
 
 
 def _cookie_header(cookies):
@@ -836,6 +896,8 @@ def main():
         print(f"  {name:18} {status:45} {got}")
         if cap and not caption:
             caption = cap
+
+    carousel_report(code, cookies)
 
     if caption:
         show_recipe(caption)

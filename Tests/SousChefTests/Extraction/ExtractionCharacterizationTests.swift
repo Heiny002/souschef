@@ -345,6 +345,32 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertFalse(ExtractionPipeline.captionWorthStructuring(hook))
     }
 
+    // MARK: - Instagram logged-out sidecar (embed gql_data)
+
+    func testSidecarImageURLsFromGQLData() throws {
+        let json = """
+        {"shortcode_media":{"edge_sidecar_to_children":{"edges":[
+          {"node":{"display_url":"https://cdn.ig/small1.jpg",
+                   "display_resources":[
+                     {"src":"https://cdn.ig/1-640.jpg","config_width":640,"config_height":800},
+                     {"src":"https://cdn.ig/1-1080.jpg","config_width":1080,"config_height":1350}]}},
+          {"node":{"display_url":"https://cdn.ig/2-display.jpg"}}
+        ]}}}
+        """
+        let gql = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        let urls = InstagramAuth.sidecarImageURLs(fromGQLData: gql)
+        XCTAssertEqual(urls.map(\.absoluteString),
+                       ["https://cdn.ig/1-1080.jpg", "https://cdn.ig/2-display.jpg"],
+                       "largest display_resources entry wins; display_url is the fallback")
+    }
+
+    func testSidecarEmptyForNonCarouselGQL() throws {
+        let gql = try XCTUnwrap(try JSONSerialization.jsonObject(
+            with: Data(#"{"shortcode_media":{"id":"1"}}"#.utf8)) as? [String: Any])
+        XCTAssertTrue(InstagramAuth.sidecarImageURLs(fromGQLData: gql).isEmpty)
+    }
+
     // MARK: - Carousel recipe collections
 
     func testCarouselWithSeveralSelfContainedRecipesIsACollection() {

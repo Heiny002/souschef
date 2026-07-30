@@ -84,11 +84,62 @@ enum InstagramAuth {
     /// authenticated media-info call as the caption, so it costs one request we may already
     /// have made.
     static func fetchCarouselImageURLs(shortcode: String) async -> [URL] {
-        guard let json = await fetchMediaInfo(shortcode: shortcode),
-              let items = json["items"] as? [[String: Any]], let first = items.first else {
+        // Rung 1: the authed media-info route — best quality candidates, needs a session.
+        if let json = await fetchMediaInfo(shortcode: shortcode),
+           let items = json["items"] as? [[String: Any]], let first = items.first {
+            let urls = carouselImageURLs(fromItem: first)
+            if !urls.isEmpty { return urls }
+        }
+        // Rung 2: the public EMBED page's gql_data sidecar — the logged-out route that makes
+        // TikTok photo posts work. Without this, a missing/expired Instagram session silently
+        // reduced a carousel post to its caption (live failure: the same collection post
+        // extracted via TikTok's embed and failed via Instagram).
+        return await fetchEmbedSidecarURLs(shortcode: shortcode)
+    }
+
+    /// Slide URLs from the embed page's inlined gql_data, no session required.
+    static func fetchEmbedSidecarURLs(shortcode: String) async -> [URL] {
+        guard let url = URL(string: "https://www.instagram.com/p/\(shortcode)/embed/captioned/") else {
             return []
         }
-        return carouselImageURLs(fromItem: first)
+        var request = URLRequest(url: url)
+        request.setValue(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+        request.setValue("https://www.instagram.com/", forHTTPHeaderField: "Referer")
+        request.timeoutInterval = 15
+        let session = URLSession(configuration: .ephemeral)
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let html = String(data: data, encoding: .utf8),
+              let gql = VideoMetadataFetcher.extractEmbedGQLData(fromEmbedHTML: html) else {
+            return []
+        }
+        return sidecarImageURLs(fromGQLData: gql)
+    }
+
+    /// Pull sidecar (carousel) slide URLs out of an embed page's gql_data. Pure + testable.
+    /// Shape: shortcode_media.edge_sidecar_to_children.edges[].node — prefer the largest
+    /// display_resources entry, fall back to display_url.
+    static func sidecarImageURLs(fromGQLData gql: [String: Any]) -> [URL] {
+        let media = (gql["shortcode_media"] ?? gql["xdt_shortcode_media"]) as? [String: Any]
+        guard let sidecar = media?["edge_sidecar_to_children"] as? [String: Any],
+              let edges = sidecar["edges"] as? [[String: Any]] else { return [] }
+        return edges.compactMap { edge -> URL? in
+            guard let node = edge["node"] as? [String: Any] else { return nil }
+            if let resources = node["display_resources"] as? [[String: Any]] {
+                let best = resources.max { a, b in
+                    let areaA = ((a["config_width"] as? Int) ?? 0) * ((a["config_height"] as? Int) ?? 0)
+                    let areaB = ((b["config_width"] as? Int) ?? 0) * ((b["config_height"] as? Int) ?? 0)
+                    return areaA < areaB
+                }
+                if let src = best?["src"] as? String, let url = URL(string: src) { return url }
+            }
+            guard let display = node["display_url"] as? String else { return nil }
+            return URL(string: display)
+        }
     }
 
     /// Pull slide image URLs out of a media-info item. Split out so it can be unit-tested
