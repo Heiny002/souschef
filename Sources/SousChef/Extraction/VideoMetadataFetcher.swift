@@ -541,10 +541,28 @@ actor VideoMetadataFetcher {
     /// `__UNIVERSAL_DATA_FOR_REHYDRATION__` JSON. Returns nil when the blob or item is absent.
     static func tiktokDetails(fromPageHTML html: String) -> TikTokDetails? {
         guard let root = tiktokRehydrationJSON(fromPageHTML: html),
-              let scope = root["__DEFAULT_SCOPE__"] as? [String: Any],
-              let detail = scope["webapp.video-detail"] as? [String: Any],
-              let itemInfo = detail["itemInfo"] as? [String: Any],
-              let item = itemInfo["itemStruct"] as? [String: Any] else { return nil }
+              let scope = root["__DEFAULT_SCOPE__"] as? [String: Any] else { return nil }
+
+        // The scope key holding the item drifts: "webapp.video-detail" for videos today, but
+        // photo-mode posts and TikTok redesigns have shipped other names. Try the known key
+        // first, then scan every scope entry for an itemInfo.itemStruct rather than losing
+        // the whole recipe to a renamed key.
+        var found: [String: Any]?
+        if let detail = scope["webapp.video-detail"] as? [String: Any],
+           let itemInfo = detail["itemInfo"] as? [String: Any],
+           let item = itemInfo["itemStruct"] as? [String: Any] {
+            found = item
+        } else {
+            for value in scope.values {
+                if let detail = value as? [String: Any],
+                   let itemInfo = detail["itemInfo"] as? [String: Any],
+                   let item = itemInfo["itemStruct"] as? [String: Any] {
+                    found = item
+                    break
+                }
+            }
+        }
+        guard let item = found else { return nil }
 
         var stickers: [String] = []
         if let arr = item["stickersOnItem"] as? [[String: Any]] {
