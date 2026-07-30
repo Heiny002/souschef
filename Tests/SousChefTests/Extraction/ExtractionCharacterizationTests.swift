@@ -319,6 +319,32 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a comment, and I'll DM the recipe"))
     }
 
+    // MARK: - LLM input-substance gate (invariant I5)
+
+    func testTruncatedHookIsNotWorthStructuring() {
+        // The exact live failure: a cut-off og-preview that the model padded into a
+        // fabricated no-quantity recipe. Too short, no digits, no structure.
+        XCTAssertFalse(ExtractionPipeline.captionWorthStructuring(
+            "I promise you these are so easy to make, S..."))
+        XCTAssertFalse(ExtractionPipeline.captionWorthStructuring("Miso chicken bowls!"))
+        XCTAssertFalse(ExtractionPipeline.captionWorthStructuring(""))
+    }
+
+    func testRealCaptionsAreWorthStructuring() {
+        // Quantities present → worth a call even as a single paragraph.
+        XCTAssertTrue(ExtractionPipeline.captionWorthStructuring(
+            "Miso chicken bowls! Marinate 2 lbs chicken thighs in 3 tbsp miso overnight, then grill and serve over rice."))
+        // No digits, but long multi-line structure (a dictated-style recipe) → worth a call.
+        XCTAssertTrue(ExtractionPipeline.captionWorthStructuring(
+            "Miso chicken bowls\nMarinate the chicken in miso paste\nGrill until charred\nServe over rice with avocado\nTop with sesame"))
+    }
+
+    func testLongNarrativeWithoutStructureIsNotWorthStructuring() {
+        // Long but one line and zero digits: marketing prose, not a recipe.
+        let hook = String(repeating: "This is the coziest bowl you will ever make and you have to try it ", count: 3)
+        XCTAssertFalse(ExtractionPipeline.captionWorthStructuring(hook))
+    }
+
     // MARK: - Carousel recipe collections
 
     func testCarouselWithSeveralSelfContainedRecipesIsACollection() {

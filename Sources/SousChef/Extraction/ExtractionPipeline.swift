@@ -231,6 +231,10 @@ actor ExtractionPipeline {
                 break
             }
             carouselText = CarouselTextExtractor.combine(slideTexts)
+            // 0 text slides on a carousel post means the slide-URL fetch came back empty
+            // (session/auth rung) or no slide had readable text — this line tells us which
+            // failure we're looking at from the device's debug readout.
+            debugTrace.append("carousel: \(slideTexts.count) text slides")
 
             // Collection detection: a carousel where SEVERAL slides each parse to a complete
             // recipe on their own is a recipe collection (photo, recipe, photo, recipe…) —
@@ -270,7 +274,7 @@ actor ExtractionPipeline {
         // A detected collection never goes to the structurer: each slide already parsed to a
         // complete recipe, and the model would be handed the JOINED text — reproducing the
         // exact merged-recipes mess the per-slide detection exists to prevent.
-        if let apiKey, textToStructure.count >= 40, !result.isCollection {
+        if let apiKey, Self.captionWorthStructuring(textToStructure), !result.isCollection {
             // Skip-gate (think-tank branch 3): a clean "Ingredients:/Steps:" caption the
             // deterministic parser already nailed doesn't need a paid call — the structurer's
             // output was usually discarded by the completeness guard below anyway. The gate
@@ -326,8 +330,12 @@ actor ExtractionPipeline {
         // structurer above already ran when a key was present; this backstops transcript-only
         // imports and captions the structurer couldn't lift over the accept threshold.
         guard let apiKey else { return result }
-        let validator = TranscriptLLMValidator(apiKey: apiKey)
-        result = (try? await validator.validate(transcript: fullText, partial: result)) ?? result
+        // Same I5 gate as the structurer: a bare hook or truncated preview must not be
+        // "validated" into a fabricated recipe — thin input goes to the honest fallbacks.
+        if Self.captionWorthStructuring(fullText) {
+            let validator = TranscriptLLMValidator(apiKey: apiKey)
+            result = (try? await validator.validate(transcript: fullText, partial: result)) ?? result
+        }
 
         // Step 5: SC-076 — Web search chain: profile discovery → targeted → general → collect similar
         if !result.isViable || result.confidence < ConfidenceThreshold.reject {
@@ -590,6 +598,22 @@ actor ExtractionPipeline {
         // longest-component-first ordering the video path applies, so the cook sees the
         // suggested part order on the review screen for web imports too.
         return Self.applyComponentSequencing(to: result)
+    }
+
+    /// Invariant I5 hardening: the model must never be handed a bare hook. A truncated
+    /// og-preview ("I promise you these are so easy to make, S…") used to go to the
+    /// structurer/validator and come back as a FABRICATED recipe — plausible ingredients,
+    /// marinate/cook/assemble steps, no quantities — which then read as a viable result and
+    /// suppressed every honest fallback (slide OCR, rescue UI). A caption earns a paid call
+    /// only when it could plausibly CONTAIN a recipe: enough length, plus either a digit
+    /// (quantities) or real multi-line structure.
+    static func captionWorthStructuring(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 80 else { return false }
+        if trimmed.contains(where: \.isNumber) { return true }
+        let lines = trimmed.components(separatedBy: .newlines)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return lines.count >= 4
     }
 
     /// Detects a recipe COLLECTION in a carousel's per-slide texts: two or more slides that
