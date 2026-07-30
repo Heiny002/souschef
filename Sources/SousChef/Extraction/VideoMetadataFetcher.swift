@@ -499,9 +499,35 @@ actor VideoMetadataFetcher {
     /// sit in the page's `__UNIVERSAL_DATA_FOR_REHYDRATION__` blob. Fetch that, merge the
     /// sticker text into the caption, and surface any photo-mode slide URLs for OCR.
     private func fetchTikTok(videoURL: String) async throws -> VideoMetadata {
-        let oembed = try? await fetchOEmbed(endpoint: "https://www.tiktok.com/oembed", videoURL: videoURL)
-        if let html = try? await fetchTikTokPage(videoURL: videoURL),
-           let details = Self.tiktokDetails(fromPageHTML: html) {
+        var oembed = try? await fetchOEmbed(endpoint: "https://www.tiktok.com/oembed", videoURL: videoURL)
+        var details: TikTokDetails?
+        var postID = Self.tiktokPostID(from: videoURL)
+
+        // Rung 1: the post page's rehydration blob. Served for some videos; photo posts and
+        // cookie-less requests get a SHELL with only app-context scopes (verified live).
+        if let html = try? await fetchTikTokPage(videoURL: videoURL) {
+            details = Self.tiktokDetails(fromPageHTML: html)
+            // Even the shell carries the canonical /@handle/(photo|video)/ID reference,
+            // JS-escaped (photo/123…). That both resolves /t/ short links (which the
+            // oEmbed endpoint 400s on) and hands us the post id for the embed rung.
+            if details == nil, let canon = Self.tiktokCanonicalPost(fromShellHTML: html) {
+                postID = postID ?? canon.id
+                if oembed == nil {
+                    oembed = try? await fetchOEmbed(endpoint: "https://www.tiktok.com/oembed",
+                                                    videoURL: canon.url)
+                }
+            }
+        }
+
+        // Rung 2: the EMBED page (embed/v2/<id>) — built for third-party sites, so it serves
+        // logged-out requests; the same pattern that makes Instagram extraction work. Photo
+        // slides live in imagePostInfo.displayImages, on-screen text in stickerTextList.
+        if details == nil, let id = postID,
+           let embedHTML = try? await fetchTikTokPage(videoURL: "https://www.tiktok.com/embed/v2/\(id)") {
+            details = Self.tiktokEmbedDetails(fromEmbedHTML: embedHTML)
+        }
+
+        if let details {
             let caption = Self.mergeCaptionAndStickers(
                 caption: Self.richerCaption(oembed?.caption, details.caption),
                 stickerText: details.stickerText)
@@ -513,6 +539,58 @@ actor VideoMetadataFetcher {
         }
         if let oembed { return oembed }
         return try await fetchOEmbed(endpoint: "https://www.tiktok.com/oembed", videoURL: videoURL)
+    }
+
+    /// The numeric post id from a canonical TikTok URL, or nil for /t/ short links.
+    static func tiktokPostID(from urlString: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: #"/(?:photo|video)/(\d+)"#),
+              let m = re.firstMatch(in: urlString, range: NSRange(urlString.startIndex..., in: urlString)),
+              let r = Range(m.range(at: 1), in: urlString) else { return nil }
+        return String(urlString[r])
+    }
+
+    /// The canonical post URL + id buried (JS-escaped) in a TikTok shell page.
+    static func tiktokCanonicalPost(fromShellHTML html: String) -> (url: String, id: String)? {
+        let unescaped = html.replacingOccurrences(of: "\\u002F", with: "/")
+        guard let re = try? NSRegularExpression(
+                pattern: #"https://www\.tiktok\.com/@[^"/\\\s]+/(?:photo|video)/(\d+)"#),
+              let m = re.firstMatch(in: unescaped, range: NSRange(unescaped.startIndex..., in: unescaped)),
+              let full = Range(m.range, in: unescaped),
+              let idRange = Range(m.range(at: 1), in: unescaped) else { return nil }
+        return (String(unescaped[full]), String(unescaped[idRange]))
+    }
+
+    /// Slide URLs + sticker text from the embed page's JSON (verified against a live photo
+    /// post): `"imagePostInfo":{"displayImages":[{"urlList":["https://…", …]}, …]}` and
+    /// `"stickerTextList":[…]`. First urlList entry per slide is the primary CDN URL.
+    static func tiktokEmbedDetails(fromEmbedHTML html: String) -> TikTokDetails? {
+        var images: [String] = []
+        if let objText = balancedJSONObject(in: html, after: "\"imagePostInfo\""),
+           let data = objText.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let displays = obj["displayImages"] as? [[String: Any]] {
+            for display in displays {
+                if let urls = display["urlList"] as? [String], let first = urls.first {
+                    images.append(first)
+                }
+            }
+        }
+        var stickers: [String] = []
+        if let arrText = balancedJSONArray(in: html, after: "\"stickerTextList\""),
+           let data = arrText.data(using: .utf8),
+           let arr = try? JSONSerialization.jsonObject(with: data) as? [Any] {
+            for entry in arr {
+                if let s = entry as? String { stickers.append(s) }
+                else if let d = entry as? [String: Any] {
+                    // Tolerate an object shape ({"text": …}) so a drift doesn't drop them.
+                    if let s = (d["text"] ?? d["Text"]) as? String { stickers.append(s) }
+                }
+            }
+        }
+        guard !images.isEmpty || !stickers.isEmpty else { return nil }
+        return TikTokDetails(caption: nil,
+                             stickerText: stickers.joined(separator: "\n"),
+                             imageURLs: images)
     }
 
     private func fetchTikTokPage(videoURL: String) async throws -> String {
@@ -705,13 +783,24 @@ actor VideoMetadataFetcher {
 
     /// The first balanced `{…}` object that appears after `marker`, quote- and escape-aware
     /// so a brace inside a JSON string (common in a video description) doesn't miscount
-    /// depth. Only `=` and whitespace may sit between the marker and the opening brace.
+    /// depth. Only `=`, `:`, and whitespace may sit between the marker and the opening brace.
     static func balancedJSONObject(in text: String, after marker: String) -> String? {
+        balancedJSON(in: text, after: marker, open: "{", close: "}")
+    }
+
+    /// Same, for a `[…]` array (e.g. `"stickerTextList":[…]` in the embed page).
+    static func balancedJSONArray(in text: String, after marker: String) -> String? {
+        balancedJSON(in: text, after: marker, open: "[", close: "]")
+    }
+
+    private static func balancedJSON(
+        in text: String, after marker: String, open: Character, close: Character
+    ) -> String? {
         guard let markerRange = text.range(of: marker) else { return nil }
         var idx = markerRange.upperBound
-        while idx < text.endIndex, text[idx] != "{" {
+        while idx < text.endIndex, text[idx] != open {
             let c = text[idx]
-            guard c == "=" || c.isWhitespace else { return nil }
+            guard c == "=" || c == ":" || c.isWhitespace else { return nil }
             idx = text.index(after: idx)
         }
         guard idx < text.endIndex else { return nil }
@@ -724,8 +813,8 @@ actor VideoMetadataFetcher {
             else if c == "\\" { escaped = true }
             else if c == "\"" { inString.toggle() }
             else if !inString {
-                if c == "{" { depth += 1 }
-                else if c == "}" { depth -= 1; if depth == 0 { return out } }
+                if c == open { depth += 1 }
+                else if c == close { depth -= 1; if depth == 0 { return out } }
             }
             idx = text.index(after: idx)
         }

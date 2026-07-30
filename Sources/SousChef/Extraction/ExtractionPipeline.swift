@@ -173,7 +173,10 @@ actor ExtractionPipeline {
         let fullText = [transcriptText, cleanedCaption]
             .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
 
-        guard !fullText.isEmpty else {
+        // No caption and no transcript is only a dead end when there are no slide images
+        // either — a TikTok photo post can carry its whole recipe in the slides, and this
+        // early return used to fire before the OCR step ever saw them.
+        guard !fullText.isEmpty || !(metadata?.imageURLs ?? []).isEmpty else {
             var empty = ExtractionResult(extractionMethod: "video-no-transcript")
             empty.title = titleHint
             empty.confidence = 0.1

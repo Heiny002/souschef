@@ -154,6 +154,57 @@ final class TikTokExtractionTests: XCTestCase {
             fromPageHTML: "<html><body>no rehydration data</body></html>"))
     }
 
+    // MARK: - Photo-post embed ladder (shell → canonical id → embed page)
+
+    func testPostIDFromCanonicalURLs() {
+        XCTAssertEqual(VideoMetadataFetcher.tiktokPostID(
+            from: "https://www.tiktok.com/@emerybrookscook/photo/7620776665383259406"),
+            "7620776665383259406")
+        XCTAssertEqual(VideoMetadataFetcher.tiktokPostID(
+            from: "https://www.tiktok.com/@chef/video/123456789"), "123456789")
+        XCTAssertNil(VideoMetadataFetcher.tiktokPostID(from: "https://www.tiktok.com/t/ZP8tWEbKN/"),
+                     "short links carry no id — resolved from the shell instead")
+    }
+
+    func testCanonicalPostRecoveredFromEscapedShell() {
+        // Real shell pages carry the canonical reference JS-escaped — / for every
+        // slash (verified live; a plain-slash grep misses it entirely). The raw-string
+        // fixture below contains literal backslash-u002F sequences, as served.
+        let shell = #"<html>…"canonical":"https:\u002F\u002Fwww.tiktok.com\u002F@emerybrookscook\u002Fphoto\u002F7620776665383259406"…</html>"#
+        let canon = VideoMetadataFetcher.tiktokCanonicalPost(fromShellHTML: shell)
+        XCTAssertEqual(canon?.url, "https://www.tiktok.com/@emerybrookscook/photo/7620776665383259406")
+        XCTAssertEqual(canon?.id, "7620776665383259406")
+        XCTAssertNil(VideoMetadataFetcher.tiktokCanonicalPost(fromShellHTML: "<html>no post here</html>"))
+    }
+
+    func testEmbedDetailsParseSlidesAndStickers() {
+        // Mirrors the live embed/v2 shape verified against a real photo post: displayImages
+        // with per-slide urlList (first entry = primary CDN URL, &-escaped queries).
+        let embed = #"""
+        <html><script>{"stickerTextList":["2 cups rice"],"imagePostInfo":{"displayImages":[
+        {"height":1440,"width":1080,"urlList":["https://p19.tiktokcdn-us.com/1.jpeg?dr=9616&x-signature=abc","https://p16.tiktokcdn-us.com/1b.jpeg"]},
+        {"height":1440,"width":1080,"urlList":["https://p19.tiktokcdn-us.com/2.jpeg?x=1&y=2"]}]}}</script></html>
+        """#
+        let d = VideoMetadataFetcher.tiktokEmbedDetails(fromEmbedHTML: embed)
+        XCTAssertEqual(d?.imageURLs,
+                       ["https://p19.tiktokcdn-us.com/1.jpeg?dr=9616&x-signature=abc",
+                        "https://p19.tiktokcdn-us.com/2.jpeg?x=1&y=2"],
+                       "first urlList entry per slide, \\u0026 decoded to &")
+        XCTAssertEqual(d?.stickerText, "2 cups rice")
+    }
+
+    func testEmbedDetailsNilWhenNothingUseful() {
+        XCTAssertNil(VideoMetadataFetcher.tiktokEmbedDetails(
+            fromEmbedHTML: #"<html>{"stickerTextList":[],"other":1}</html>"#))
+    }
+
+    func testBalancedJSONArray() {
+        let text = #"prefix "stickerTextList":["a","b [not a bracket]","c"] suffix"#
+        XCTAssertEqual(VideoMetadataFetcher.balancedJSONArray(in: text, after: "\"stickerTextList\""),
+                       #"["a","b [not a bracket]","c"]"#,
+                       "brackets inside string values are not counted")
+    }
+
     func testCaptionMergeHelpers() {
         XCTAssertEqual(VideoMetadataFetcher.richerCaption("short", "much longer caption"),
                        "much longer caption")
