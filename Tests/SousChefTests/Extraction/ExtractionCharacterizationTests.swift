@@ -346,6 +346,62 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertFalse(ExtractionPipeline.captionWorthStructuring(hook))
     }
 
+    // MARK: - OCR wrap merging (marker-styled lists)
+
+    func testWrappedBulletedIngredientsAndNumberedStepsMerge() {
+        // The exact slide shape from a live TikTok photo post: bulleted ingredient sections
+        // ("For Dish Base" style), then an ordered list under "Instructions:". OCR breaks a
+        // long item onto a second, unmarked line — which must rejoin its item, not become a
+        // new ingredient or step.
+        let text = """
+        Creamy Tomato Bowl
+
+        For Dish Base
+        • 2 cups cherry tomatoes,
+        halved and lightly salted
+        • 1 cup orzo
+
+        For Topping/Serving
+        • fresh basil
+
+        Instructions:
+        1. Roast the tomatoes until
+        they burst.
+        2. Stir in the orzo.
+        """
+        let r = PastedTextExtractor().extract(text: text)
+        XCTAssertEqual(r.title, "Creamy Tomato Bowl")
+        // Note: the comma after "tomatoes" is gone — line-level cleaning strips trailing
+        // separators (the "Serve warm ·" dangler rule) before the wrap merge rejoins the
+        // fragment. Harmless: the item reads correctly and parses to the same quantity/item.
+        XCTAssertEqual(r.ingredients.map(\.text),
+                       ["2 cups cherry tomatoes halved and lightly salted",
+                        "1 cup orzo", "fresh basil"])
+        XCTAssertEqual(r.ingredients.map(\.section),
+                       ["For Dish Base", "For Dish Base", "For Topping/Serving"])
+        XCTAssertEqual(r.steps.map(\.text),
+                       ["Roast the tomatoes until they burst.", "Stir in the orzo."])
+    }
+
+    func testUnmarkedListsKeepLinePerItem() {
+        // Plain caption lists carry no bullets — every line is its own item, unchanged.
+        let text = """
+        Simple Salad
+
+        Ingredients:
+        2 cups spinach
+        1 avocado
+        juice of 1 lemon
+
+        Steps:
+        Toss everything together.
+        Season and serve.
+        """
+        let r = PastedTextExtractor().extract(text: text)
+        XCTAssertEqual(r.ingredients.count, 3)
+        XCTAssertEqual(r.steps.count, 2)
+    }
+
     // MARK: - Two-column OCR assembly
 
     /// Vision-normalized box: origin bottom-left, so higher on the page = larger y.

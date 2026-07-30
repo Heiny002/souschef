@@ -147,6 +147,7 @@ struct PastedTextExtractor {
             if let s = stepHeaderIdx, s > start { end = s } else { end = lines.count }
             var currentSection: String?
             var inSteps = false
+            var lastIngredientHadMarker = false
             for i in start..<end {
                 let line = lines[i]
                 if line.isEmpty { continue }
@@ -161,8 +162,16 @@ struct PastedTextExtractor {
                 }
                 if inSteps {
                     inlineStepLines.append(line)
+                } else if !Self.hasListMarker(line), lastIngredientHadMarker,
+                          var previous = ingredients.last {
+                    // OCR wraps a long bulleted ingredient onto a second, unmarked line. In a
+                    // marker-styled list every real item carries its bullet, so an unmarked
+                    // line after a marked item is that item's continuation, not a new one.
+                    previous.text += " " + line.trimmingCharacters(in: .whitespaces)
+                    ingredients[ingredients.count - 1] = previous
                 } else {
                     ingredients.append(RawIngredient(text: Self.stripMarker(line), section: currentSection))
+                    lastIngredientHadMarker = Self.hasListMarker(line)
                 }
             }
         }
@@ -217,11 +226,18 @@ struct PastedTextExtractor {
             let section = sectionName(fromIngredientHeader: lines[i])
             i += 1
             // Ingredient lines until a step header or the next component's ingredient header.
+            var lastHadMarker = false
             while i < lines.count {
                 let line = lines[i]
                 if line.isEmpty { i += 1; continue }
                 if isStepHeader(line) || isIngredientHeader(line) { break }
-                ingredients.append(RawIngredient(text: stripMarker(line), section: section))
+                if !hasListMarker(line), lastHadMarker, var previous = ingredients.last {
+                    previous.text += " " + line.trimmingCharacters(in: .whitespaces)
+                    ingredients[ingredients.count - 1] = previous
+                } else {
+                    ingredients.append(RawIngredient(text: stripMarker(line), section: section))
+                    lastHadMarker = hasListMarker(line)
+                }
                 i += 1
             }
             // Optional step header + step lines until the next component.
@@ -293,7 +309,23 @@ struct PastedTextExtractor {
                 if sentences.count > 1 { parts = sentences }
             }
         } else {
-            parts = block.map { stripMarker($0) }
+            // In a marker-styled block (numbered / bulleted), an unmarked line is the
+            // previous step's OCR wrap, not a new step. A plain unmarked block keeps its
+            // line-per-step behavior — the >= 2 marked-lines requirement is what separates
+            // the two shapes.
+            let markedCount = block.filter { hasListMarker($0) }.count
+            if markedCount >= 2 {
+                parts = []
+                for line in block {
+                    if !hasListMarker(line), !parts.isEmpty {
+                        parts[parts.count - 1] += " " + line.trimmingCharacters(in: .whitespaces)
+                    } else {
+                        parts.append(stripMarker(line))
+                    }
+                }
+            } else {
+                parts = block.map { stripMarker($0) }
+            }
         }
         // Every step is born here, so this is where output filtering belongs: splitting a
         // block into sentences can re-expose a trailing tag run ("…until golden. #easyrecipes")
@@ -438,6 +470,13 @@ struct PastedTextExtractor {
         pattern: #"^\s*(?:[-*•·▢□◦‣⁃]\s+|\[\s?\]\s*|\d+\s*[.)]\s+|step\s*\d+\s*[:.)-]?\s*)"#,
         options: .caseInsensitive
     )
+
+    /// True when the line opens with a list marker (bullet, checkbox, "1.", "Step 2:").
+    static func hasListMarker(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard let re = markerRE else { return false }
+        return re.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) != nil
+    }
 
     /// Strip a single leading list marker (bullet, "1.", "Step 2:", checkbox).
     static func stripMarker(_ line: String) -> String {
