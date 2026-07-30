@@ -211,7 +211,13 @@ actor ExtractionPipeline {
         // failed, because it costs a download plus OCR per slide — a caption that already
         // produced a recipe is both cheaper and more reliable than text lifted off a photo.
         var carouselText = ""
-        if !result.isViable {
+        // Gate on TRUSTWORTHINESS, not bare viability: a caption of narrative + hashtags
+        // parses to a viable-but-garbage recipe (1 fake ingredient, 1 hashtag "step") at
+        // low confidence, and the old `!isViable` gate let that suppress slide OCR on a
+        // carousel whose slides held the real recipe (live failure). OCR is on-device and
+        // free; only a confident caption parse earns the right to skip it. The completeness
+        // comparison below still protects a good caption parse from worse OCR text.
+        if !result.isViable || result.confidence < ConfidenceThreshold.accept {
             var slideTexts: [String] = []
             switch URLRouter.classify(urlString) {
             case .instagram:

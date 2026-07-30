@@ -523,14 +523,22 @@ def is_noise(line):
     return False
 
 
+def strip_leading_tags(line):
+    """Mirrors SocialTextFilter.stripLeadingTags — hashtag-prefixed SEO lines."""
+    toks = line.split()
+    while toks and is_tag_token(toks[0]):
+        toks.pop(0)
+    return " ".join(toks)
+
+
 def clean_line(line):
-    """None = drop, '' = blank (kept), else the line minus its trailing tag run."""
+    """None = drop, '' = blank (kept), else the line minus its edge tag runs."""
     t = line.strip()
     if not t:
         return ""
     if is_noise(t):
         return None
-    stripped = strip_trailing_tags(t)
+    stripped = strip_trailing_tags(strip_leading_tags(t))
     return stripped or None
 
 

@@ -131,6 +131,16 @@ enum SocialTextFilter {
         return joined
     }
 
+    /// Remove a LEADING run of tag tokens: "#easydinner #chickenbowl what to make tonight"
+    /// opens with tags and used to survive whole (only trailing runs were stripped), so
+    /// hashtag-prefixed SEO lines became recipe "steps". Tags only — a leading "• " bullet
+    /// or "#2 can" (digit body, not a tag) is untouched.
+    static func stripLeadingTags(_ line: String) -> String {
+        var tokens = line.split(whereSeparator: \.isWhitespace)
+        while let first = tokens.first, isTagToken(first) { tokens.removeFirst() }
+        return tokens.joined(separator: " ")
+    }
+
     // MARK: - Cleaning
 
     /// Clean one line: nil to drop it, "" for a blank line (kept so paragraph structure — and
@@ -146,7 +156,7 @@ enum SocialTextFilter {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { return "" }
         if isNoiseLine(trimmed, includePhrases: includePhrases) { return nil }
-        let stripped = stripTrailingTags(trimmed)
+        let stripped = stripTrailingTags(stripLeadingTags(trimmed))
         // Stripping emptied it → it was a tag wall after all; drop rather than emit a blank.
         return stripped.isEmpty ? nil : stripped
     }

@@ -165,6 +165,18 @@ final class SocialTextFilterTests: XCTestCase {
         XCTAssertEqual(SocialTextFilter.cleanEntry("#a #b"), "#a #b")
     }
 
+    func testLeadingTagRunIsStripped() {
+        // A hashtag-prefixed SEO line survived whole when only trailing runs were stripped,
+        // and became a recipe "step" (live failure on a miso-chicken post).
+        XCTAssertEqual(
+            SocialTextFilter.cleanLine("#easydinnerideas #chickenbowl what to make for dinner, quick ideas"),
+            "what to make for dinner, quick ideas")
+        // Tags only: a leading bullet and a can size are not tags and stay put.
+        XCTAssertEqual(SocialTextFilter.stripLeadingTags("• 1 tsp paprika"), "• 1 tsp paprika")
+        XCTAssertEqual(SocialTextFilter.stripLeadingTags("#2 can tomatoes"), "#2 can tomatoes")
+        XCTAssertEqual(SocialTextFilter.stripLeadingTags("#easy #fast Serve warm"), "Serve warm")
+    }
+
     func testStripTrailingTagsKeepsALeadingBullet() {
         // The trailing trim removes a separator the tag run left dangling; trimming both ends
         // would eat the "• " that Cook Mode renders for a step's bulleted spice list.
