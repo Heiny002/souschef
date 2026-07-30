@@ -319,6 +319,41 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertTrue(SocialTextFilter.isNoiseLine("Drop a comment, and I'll DM the recipe"))
     }
 
+    // MARK: - Carousel recipe collections
+
+    func testCarouselWithSeveralSelfContainedRecipesIsACollection() {
+        // The real shape: hook slide, then each recipe complete on its own slide
+        // (food-photo slides never reach detection — the OCR triage drops them).
+        let slides = [
+            "my 3 favorite fall soups, save these!",
+            "Roasted Tomato Soup\n\nIngredients:\n2 lbs tomatoes\n1 onion\n\nSteps:\n1. Roast the tomatoes.\n2. Blend until smooth.",
+            "Lentil Soup\n\nIngredients:\n1 cup lentils\n4 cups stock\n\nSteps:\n1. Simmer for 25 minutes.",
+        ]
+        let recipes = ExtractionPipeline.collectionResults(fromSlideTexts: slides)
+        XCTAssertEqual(recipes?.count, 2)
+        XCTAssertEqual(recipes?.first?.title, "Roasted Tomato Soup")
+        XCTAssertEqual(recipes?.last?.title, "Lentil Soup")
+        XCTAssertEqual(recipes?.first?.ingredients.count, 2)
+        XCTAssertEqual(recipes?.first?.steps.count, 2)
+    }
+
+    func testOneRecipeSpreadAcrossSlidesIsNotACollection() {
+        // Ingredients on one slide, method on the next: no slide is viable alone, so this
+        // correctly stays on the join-and-parse path instead of shredding one recipe in two.
+        let slides = [
+            "Cozy Miso Ramen",
+            "Ingredients:\n2 packs ramen\n4 cups broth\n2 tbsp miso",
+            "Steps:\n1. Whisk miso into the broth.\n2. Add the noodles.",
+        ]
+        XCTAssertNil(ExtractionPipeline.collectionResults(fromSlideTexts: slides))
+    }
+
+    func testSingleSlideIsNeverACollection() {
+        let slide = "Toast\n\nIngredients:\n2 slices bread\n\nSteps:\n1. Toast the bread."
+        XCTAssertNil(ExtractionPipeline.collectionResults(fromSlideTexts: [slide]))
+        XCTAssertNil(ExtractionPipeline.collectionResults(fromSlideTexts: []))
+    }
+
     // MARK: - DM-funnel detection (think-tank branch 13)
 
     func testDMFunnelCaptionsAreDetected() {

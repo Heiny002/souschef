@@ -30,16 +30,30 @@ enum CarouselTextExtractor {
     /// can take several seconds and silence reads as a hang.
     static func extractText(shortcode: String,
                             progress: (@Sendable (String) -> Void)? = nil) async -> String {
-        let urls = await InstagramAuth.fetchCarouselImageURLs(shortcode: shortcode)
-        return await extractText(imageURLs: urls, progress: progress)
+        combine(await extractSlideTexts(shortcode: shortcode, progress: progress))
     }
 
-    /// OCR text from a set of already-resolved slide image URLs, joined in order. This is the
-    /// platform-agnostic core: Instagram resolves URLs from a shortcode, TikTok photo mode
-    /// hands them over directly from its rehydration blob. Empty when no slide has text.
+    /// Per-slide OCR texts for an Instagram carousel, in slide order.
+    static func extractSlideTexts(shortcode: String,
+                                  progress: (@Sendable (String) -> Void)? = nil) async -> [String] {
+        let urls = await InstagramAuth.fetchCarouselImageURLs(shortcode: shortcode)
+        return await extractSlideTexts(imageURLs: urls, progress: progress)
+    }
+
+    /// OCR text from a set of already-resolved slide image URLs, joined in order.
     static func extractText(imageURLs urls: [URL],
                             progress: (@Sendable (String) -> Void)? = nil) async -> String {
-        guard !urls.isEmpty else { return "" }
+        combine(await extractSlideTexts(imageURLs: urls, progress: progress))
+    }
+
+    /// The platform-agnostic OCR core, one text per slide that HAS text (food-photo slides
+    /// are dropped by the triage pass, so they act as natural separators). Instagram resolves
+    /// URLs from a shortcode, TikTok photo mode hands them over from its embed data. Keeping
+    /// slides separate is what lets the pipeline tell ONE recipe spread across slides from a
+    /// COLLECTION of recipes, one per slide.
+    static func extractSlideTexts(imageURLs urls: [URL],
+                                  progress: (@Sendable (String) -> Void)? = nil) async -> [String] {
+        guard !urls.isEmpty else { return [] }
 
         let slides = Array(urls.prefix(maxSlides))
         if urls.count > maxSlides {
@@ -59,7 +73,7 @@ enum CarouselTextExtractor {
                 pieces.append(cleaned)
             }
         }
-        return combine(pieces)
+        return pieces
     }
 
     /// Join slide texts into one document.

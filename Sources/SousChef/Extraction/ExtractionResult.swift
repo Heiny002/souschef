@@ -36,6 +36,10 @@ struct ExtractionResult: Sendable {
     var wasTruncated: Bool = false       // caption arrived cut off (trailing "…"); show a banner
     var producedBy: ContentSource = .social  // gates output-side phrase filtering (invariant I2)
     var creatorSharesByDM: Bool = false  // caption funnels the recipe via DM; honest failure copy
+    /// True when this import found SEVERAL distinct recipes (a carousel collection). The
+    /// primary recipe is this result; the rest ride in `alternatives`, and the UI offers a
+    /// multi-select picker instead of presenting one recipe as the whole post.
+    var isCollection: Bool = false
 
     init(extractionMethod: String) {
         self.ingredients = []

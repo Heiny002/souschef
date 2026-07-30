@@ -212,24 +212,39 @@ actor ExtractionPipeline {
         // produced a recipe is both cheaper and more reliable than text lifted off a photo.
         var carouselText = ""
         if !result.isViable {
+            var slideTexts: [String] = []
             switch URLRouter.classify(urlString) {
             case .instagram:
                 if let shortcode = VideoMetadataFetcher.instagramShortcode(from: urlString) {
-                    carouselText = await CarouselTextExtractor.extractText(shortcode: shortcode,
-                                                                          progress: progress)
+                    slideTexts = await CarouselTextExtractor.extractSlideTexts(shortcode: shortcode,
+                                                                              progress: progress)
                 }
             case .tikTok:
-                // TikTok photo-mode posts carry the recipe as slide images; the rehydration
-                // parse handed their URLs back on the metadata.
+                // TikTok photo-mode posts carry the recipe as slide images; the embed/
+                // rehydration parse handed their URLs back on the metadata.
                 let urls = (metadata?.imageURLs ?? []).compactMap { URL(string: $0) }
                 if !urls.isEmpty {
-                    carouselText = await CarouselTextExtractor.extractText(imageURLs: urls,
-                                                                          progress: progress)
+                    slideTexts = await CarouselTextExtractor.extractSlideTexts(imageURLs: urls,
+                                                                              progress: progress)
                 }
             default:
                 break
             }
-            if !carouselText.isEmpty {
+            carouselText = CarouselTextExtractor.combine(slideTexts)
+
+            // Collection detection: a carousel where SEVERAL slides each parse to a complete
+            // recipe on their own is a recipe collection (photo, recipe, photo, recipe…) —
+            // not one recipe split across slides. Joined-and-parsed, a collection becomes a
+            // franken-recipe (recipe 2 recovered as a "component" of recipe 1), so it is
+            // detected BEFORE the join and surfaced as primary + alternatives for the picker.
+            if let recipes = Self.collectionResults(fromSlideTexts: slideTexts) {
+                var primary = recipes[0]
+                primary.alternatives = Array(recipes.dropFirst())
+                primary.isCollection = true
+                result = primary
+                debugTrace.append("carousel collection: \(recipes.count) recipes "
+                                  + "(\(recipes.compactMap(\.title).joined(separator: " / ")))")
+            } else if !carouselText.isEmpty {
                 progress?("Reading the recipe…")
                 let fromSlides = PastedTextExtractor().extract(text: carouselText)
                 if Self.completeness(fromSlides) > Self.completeness(result) {
@@ -252,7 +267,10 @@ actor ExtractionPipeline {
         // exactly the mess the structurer handles better than the rule-based parser.
         let usingCaption = captionText.count >= 40
         let textToStructure = usingCaption ? captionText : carouselText
-        if let apiKey, textToStructure.count >= 40 {
+        // A detected collection never goes to the structurer: each slide already parsed to a
+        // complete recipe, and the model would be handed the JOINED text — reproducing the
+        // exact merged-recipes mess the per-slide detection exists to prevent.
+        if let apiKey, textToStructure.count >= 40, !result.isCollection {
             // Skip-gate (think-tank branch 3): a clean "Ingredients:/Steps:" caption the
             // deterministic parser already nailed doesn't need a paid call — the structurer's
             // output was usually discarded by the completeness guard below anyway. The gate
@@ -572,6 +590,17 @@ actor ExtractionPipeline {
         // longest-component-first ordering the video path applies, so the cook sees the
         // suggested part order on the review screen for web imports too.
         return Self.applyComponentSequencing(to: result)
+    }
+
+    /// Detects a recipe COLLECTION in a carousel's per-slide texts: two or more slides that
+    /// each parse to a viable recipe ON THEIR OWN are self-contained recipes, not parts of
+    /// one. A single recipe spread across slides ("Ingredients" slide + "Method" slide)
+    /// fails per-slide viability and correctly falls through to the join-and-parse path.
+    /// Returns nil when the carousel is not a collection.
+    static func collectionResults(fromSlideTexts slides: [String]) -> [ExtractionResult]? {
+        guard slides.count >= 2 else { return nil }
+        let viable = slides.map { PastedTextExtractor().extract(text: $0) }.filter(\.isViable)
+        return viable.count >= 2 ? viable : nil
     }
 
     /// Reorder a multi-part recipe so the longest-running component leads. No-op for a
