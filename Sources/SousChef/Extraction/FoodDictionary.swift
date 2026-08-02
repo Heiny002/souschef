@@ -107,8 +107,15 @@ final class FoodDictionary: @unchecked Sendable {
     private func load() {
         // Prefer the "Data/" folder reference, fall back to the bundle root so a
         // resource-packaging change can't silently empty the allergen dictionary.
-        guard let url = Bundle.main.url(forResource: "food-dictionary", withExtension: "json", subdirectory: "Data")
-                ?? Bundle.main.url(forResource: "food-dictionary", withExtension: "json") else {
+        // In the app the dictionary ships in the main bundle; in the SousChefDesk SPM harness
+        // it rides in Bundle.module. Same file either way.
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle.main
+        #endif
+        guard let url = bundle.url(forResource: "food-dictionary", withExtension: "json", subdirectory: "Data")
+                ?? bundle.url(forResource: "food-dictionary", withExtension: "json") else {
             Self.logger.critical("food-dictionary.json not found in bundle — allergen resolution is inert")
             assertionFailure("food-dictionary.json not found in bundle — allergen resolution will be inert")
             return

@@ -1,24 +1,24 @@
 import Foundation
 import Vision
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// On-device OCR for the "scan a recipe" import path. Uses the Vision framework, so it runs
 /// entirely offline with no API cost — the recognized text is fed straight into
 /// `PastedTextExtractor`, exactly like a paste.
+///
+/// The core operates on raw image `Data` (Vision consumes it directly), which keeps this file
+/// platform-neutral: the SousChefDesk macOS harness runs the same OCR the phone does. The
+/// `UIImage` entry points are thin wrappers for the app's scan/camera paths.
 enum ImageTextRecognizer {
 
-    /// Recognize text in an image, returned as newline-separated lines in reading order
-    /// (top-to-bottom, left-to-right). Returns "" if the image can't be read or holds no text.
-    ///
-    /// The image is encoded to `Data` before crossing onto a background queue so nothing
-    /// non-Sendable (CGImage / the Vision request objects) escapes the concurrency domain —
-    /// the request is built and consumed entirely inside the background closure. Recognition
-    /// runs off the main thread so the UI keeps its "Reading…" spinner responsive.
-    static func recognizeText(in image: UIImage) async -> String {
-        guard let data = image.jpegData(compressionQuality: 0.9) ?? image.pngData() else { return "" }
-        let orientation = CGImagePropertyOrientation(image.imageOrientation)
-
-        return await withCheckedContinuation { continuation in
+    /// Recognize text in encoded image data, returned as newline-separated lines in reading
+    /// order. Returns "" if the image can't be read or holds no text. Recognition runs off
+    /// the main thread so the UI keeps its "Reading…" spinner responsive.
+    static func recognizeText(inImageData data: Data,
+                              orientation: CGImagePropertyOrientation = .up) async -> String {
+        await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let request = VNRecognizeTextRequest()
                 // Accurate + language correction: recipes are prose, and correction fixes the
@@ -38,6 +38,16 @@ enum ImageTextRecognizer {
         }
     }
 
+    #if canImport(UIKit)
+    /// UIImage wrapper for the scan/camera paths. Encoded to `Data` before crossing onto the
+    /// background queue so nothing non-Sendable escapes the concurrency domain.
+    static func recognizeText(in image: UIImage) async -> String {
+        guard let data = image.jpegData(compressionQuality: 0.9) ?? image.pngData() else { return "" }
+        return await recognizeText(inImageData: data,
+                                   orientation: CGImagePropertyOrientation(image.imageOrientation))
+    }
+    #endif
+
     /// Cheap "does this image carry text at all?" pass, for triaging a carousel before paying
     /// for full recognition on every slide.
     ///
@@ -48,12 +58,9 @@ enum ImageTextRecognizer {
     /// `minimumCoverage` is the share of the image that must be text-like. A little stray text
     /// (a watermark, a logo, a handle burned into the corner) shouldn't qualify a slide as a
     /// recipe page, but a genuine text slide covers a lot of the frame.
-    static func hasText(in image: UIImage, minimumCoverage: CGFloat = 0.02) async -> Bool {
-        guard let data = image.jpegData(compressionQuality: 0.8) ?? image.pngData() else {
-            return false
-        }
-        let orientation = CGImagePropertyOrientation(image.imageOrientation)
-
+    static func hasText(inImageData data: Data,
+                        orientation: CGImagePropertyOrientation = .up,
+                        minimumCoverage: CGFloat = 0.02) async -> Bool {
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let request = VNDetectTextRectanglesRequest()
@@ -76,6 +83,18 @@ enum ImageTextRecognizer {
             }
         }
     }
+
+    #if canImport(UIKit)
+    /// UIImage wrapper for the scan/camera paths.
+    static func hasText(in image: UIImage, minimumCoverage: CGFloat = 0.02) async -> Bool {
+        guard let data = image.jpegData(compressionQuality: 0.8) ?? image.pngData() else {
+            return false
+        }
+        return await hasText(inImageData: data,
+                             orientation: CGImagePropertyOrientation(image.imageOrientation),
+                             minimumCoverage: minimumCoverage)
+    }
+    #endif
 
     /// Order recognized-text observations into reading order, column-aware.
     private static func assemble(_ observations: [VNRecognizedTextObservation]) -> String {
@@ -157,6 +176,7 @@ enum ImageTextRecognizer {
     }
 }
 
+#if canImport(UIKit)
 private extension CGImagePropertyOrientation {
     /// Map a `UIImage.Orientation` (what the camera/library hands us) to the Core Graphics
     /// orientation Vision expects, so rotated photos OCR correctly.
@@ -174,3 +194,4 @@ private extension CGImagePropertyOrientation {
         }
     }
 }
+#endif

@@ -66,3 +66,17 @@ jobs:
           name: xcodebuild-log
           path: xcodebuild.log
           if-no-files-found: ignore
+
+  desk-build:
+    name: SousChefDesk harness (macOS swift build)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build SousChefDesk
+        # The desktop harness compiles the app's actual extraction sources via SPM.
+        # A build here guarantees the shared code stays macOS-compatible (no stray
+        # UIKit/SwiftData creep into the extraction layer) and the harness never rots.
+        run: swift build 2>&1 | tail -40

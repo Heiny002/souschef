@@ -23,7 +23,12 @@ actor ExtractionPipeline {
     /// The Anthropic key injected via Secrets.xcconfig → Info.plist, or nil when absent/empty.
     /// Gates every optional LLM step (caption structuring, web-page fallback, transcript validation).
     static var anthropicAPIKey: String? {
-        (Bundle.main.infoDictionary?["ANTHROPIC_API_KEY"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let fromBundle = (Bundle.main.infoDictionary?["ANTHROPIC_API_KEY"] as? String)
+            .flatMap { $0.isEmpty ? nil : $0 }
+        // The macOS harness has no Info.plist injection; the environment is its Secrets.xcconfig.
+        let fromEnv = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]
+            .flatMap { $0.isEmpty ? nil : $0 }
+        return fromBundle ?? fromEnv
     }
 
     /// Extract a recipe from a URL. Returns the best result found across all layers.

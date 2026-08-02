@@ -15,12 +15,38 @@ enum InstagramAuth {
     /// Instagram cookies currently in the shared web data store.
     @MainActor
     static func sessionCookies() async -> [HTTPCookie] {
-        await withCheckedContinuation { continuation in
+        let stored: [HTTPCookie] = await withCheckedContinuation { continuation in
             WKWebsiteDataStore.default().httpCookieStore.getAllCookies { all in
                 continuation.resume(returning: all.filter { $0.domain.contains("instagram.com") })
             }
         }
+        #if os(macOS)
+        // The macOS harness has no "Connect Instagram" web login; fall back to a Netscape
+        // cookies.txt (SOUSCHEF_COOKIES env var, or ./cookies.txt) — the same file the
+        // desktop debug tools use.
+        if !stored.contains(where: { $0.name == "sessionid" && !$0.value.isEmpty }) {
+            let path = ProcessInfo.processInfo.environment["SOUSCHEF_COOKIES"] ?? "cookies.txt"
+            let fromFile = cookiesFromNetscapeFile(atPath: path)
+            if fromFile.contains(where: { $0.name == "sessionid" }) { return fromFile }
+        }
+        #endif
+        return stored
     }
+
+    #if os(macOS)
+    /// Parse a Netscape-format cookies.txt into HTTPCookies for instagram.com.
+    static func cookiesFromNetscapeFile(atPath path: String) -> [HTTPCookie] {
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
+        return content.components(separatedBy: .newlines).compactMap { line -> HTTPCookie? in
+            guard !line.hasPrefix("#"), !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+            let parts = line.components(separatedBy: "\t")
+            guard parts.count >= 7, parts[0].lowercased().contains("instagram") else { return nil }
+            return HTTPCookie(properties: [
+                .domain: ".instagram.com", .path: "/", .name: parts[5], .value: parts[6],
+            ])
+        }
+    }
+    #endif
 
     /// True when a non-empty `sessionid` cookie is present (the user is logged in).
     static func isConnected() async -> Bool {

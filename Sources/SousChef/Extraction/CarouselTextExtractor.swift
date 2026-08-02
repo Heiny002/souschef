@@ -1,5 +1,4 @@
 import Foundation
-import UIKit
 
 /// Reads a recipe out of an Instagram carousel's SLIDES.
 ///
@@ -63,12 +62,12 @@ enum CarouselTextExtractor {
         var pieces: [String] = []
         for (index, url) in slides.enumerated() {
             progress?("Reading slide \(index + 1) of \(slides.count)…")
-            guard let image = await downloadImage(url) else { continue }
+            guard let imageData = await downloadImageData(url) else { continue }
 
             // Triage before recognition — the whole point of the staged pass.
-            guard await ImageTextRecognizer.hasText(in: image) else { continue }
+            guard await ImageTextRecognizer.hasText(inImageData: imageData) else { continue }
 
-            let text = await ImageTextRecognizer.recognizeText(in: image)
+            let text = await ImageTextRecognizer.recognizeText(inImageData: imageData)
             if let cleaned = SocialTextFilter.cleanEntry(text), !cleaned.isEmpty {
                 pieces.append(cleaned)
             }
@@ -91,7 +90,9 @@ enum CarouselTextExtractor {
 
     // MARK: - Download
 
-    private static func downloadImage(_ url: URL) async -> UIImage? {
+    /// Raw image bytes — Vision consumes encoded data directly (no image-type
+    /// round-trip), which keeps this file platform-neutral for the macOS harness.
+    private static func downloadImageData(_ url: URL) async -> Data? {
         // These URLs come from parsed Instagram/TikTok JSON — attacker-influenceable — so
         // they pass the same SSRF guard as web fetches before any request is made.
         guard WebPageFetcher.isAllowed(url) else { return nil }
@@ -107,6 +108,6 @@ enum CarouselTextExtractor {
         guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode)
         else { return nil }
-        return UIImage(data: data)
+        return data
     }
 }
