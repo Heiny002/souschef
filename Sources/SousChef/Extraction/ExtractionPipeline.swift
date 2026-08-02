@@ -25,10 +25,11 @@ actor ExtractionPipeline {
     static var anthropicAPIKey: String? {
         let fromBundle = (Bundle.main.infoDictionary?["ANTHROPIC_API_KEY"] as? String)
             .flatMap { $0.isEmpty ? nil : $0 }
-        // The macOS harness has no Info.plist injection; the environment is its Secrets.xcconfig.
+        // The macOS harness has no Info.plist injection: take the environment, then read
+        // Secrets.xcconfig itself so `swift run` needs no export step.
         let fromEnv = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]
             .flatMap { $0.isEmpty ? nil : $0 }
-        return fromBundle ?? fromEnv
+        return fromBundle ?? fromEnv ?? XcconfigSecrets.value(forKey: "ANTHROPIC_API_KEY")
     }
 
     /// Extract a recipe from a URL. Returns the best result found across all layers.

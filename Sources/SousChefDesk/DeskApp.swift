@@ -46,8 +46,37 @@ final class DeskModel: ObservableObject {
         return FileManager.default.fileExists(atPath: path)
     }
 
+    /// Same resolution the pipeline itself uses (Info.plist → env → Secrets.xcconfig), so
+    /// this label can never disagree with what the extraction actually does.
     var anthropicKeyPresent: Bool {
-        !(ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? "").isEmpty
+        ExtractionPipeline.anthropicAPIKey != nil
+    }
+
+    /// "branch @ shortsha", read from the checkout at launch — so it's always obvious which
+    /// build is running (the recurring failure mode is an aborted pull leaving old code).
+    /// "+ local changes" is the tell for exactly that: a dirty tree that will block a pull.
+    let buildStamp: String = DeskModel.gitStamp()
+
+    private static func gitStamp() -> String {
+        func git(_ args: [String]) -> String? {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            p.arguments = ["git"] + args
+            let out = Pipe()
+            p.standardOutput = out
+            p.standardError = Pipe()
+            guard (try? p.run()) != nil else { return nil }
+            p.waitUntilExit()
+            guard p.terminationStatus == 0 else { return nil }
+            let text = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return (text?.isEmpty ?? true) ? nil : text
+        }
+        guard let sha = git(["rev-parse", "--short", "HEAD"]) else { return "version unknown" }
+        let branch = git(["rev-parse", "--abbrev-ref", "HEAD"]) ?? "?"
+        // Empty porcelain output maps to nil above, so non-nil means the tree is dirty.
+        let dirty = git(["status", "--porcelain"]) != nil ? " + local changes" : ""
+        return "\(branch) @ \(sha)\(dirty)"
     }
 
     func extract() {

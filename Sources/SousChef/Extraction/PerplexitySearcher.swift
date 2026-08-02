@@ -34,6 +34,11 @@ enum PerplexitySearcher {
     static var apiKey: String? {
         (Bundle.main.infoDictionary?["PERPLEXITY_API_KEY"] as? String)
             .flatMap { $0.isEmpty ? nil : $0 }
+            // Same fallback ladder as the Anthropic key: env, then Secrets.xcconfig — how
+            // the macOS harness (no Info.plist injection) picks the key up.
+            ?? ProcessInfo.processInfo.environment["PERPLEXITY_API_KEY"]
+                .flatMap { $0.isEmpty ? nil : $0 }
+            ?? XcconfigSecrets.value(forKey: "PERPLEXITY_API_KEY")
     }
 
     static var isConfigured: Bool { apiKey != nil }

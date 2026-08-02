@@ -10,6 +10,9 @@ struct InputPane: View {
             Text("SousChef Desk").font(.title2).bold()
             Text("Runs the app's real extraction pipeline.")
                 .font(.caption).foregroundStyle(.secondary)
+            Text(model.buildStamp)
+                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                .textSelection(.enabled)
 
             TextField("Recipe or post URL…", text: $model.urlString)
                 .textFieldStyle(.roundedBorder)
@@ -27,7 +30,7 @@ struct InputPane: View {
                 Label(model.cookiesPresent ? "Instagram cookies.txt found" : "No cookies.txt (Instagram authed rungs off)",
                       systemImage: model.cookiesPresent ? "checkmark.circle" : "xmark.circle")
                     .foregroundStyle(model.cookiesPresent ? .green : .orange)
-                Label(model.anthropicKeyPresent ? "ANTHROPIC_API_KEY set (LLM rungs on)" : "No ANTHROPIC_API_KEY (deterministic only)",
+                Label(model.anthropicKeyPresent ? "Anthropic key found (LLM rungs on)" : "No Anthropic key — add ANTHROPIC_API_KEY to Secrets.xcconfig",
                       systemImage: model.anthropicKeyPresent ? "checkmark.circle" : "xmark.circle")
                     .foregroundStyle(model.anthropicKeyPresent ? .green : .orange)
             }
