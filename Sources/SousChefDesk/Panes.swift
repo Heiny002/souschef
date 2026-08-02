@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // MARK: - Left: input + progress + trace
 
@@ -180,6 +181,12 @@ struct ReviewPane: View {
 struct CookPane: View {
     @ObservedObject var model: DeskModel
 
+    // A deliberately simple stand-in for the app's CookTimerStack (which is bound to
+    // UIKit haptics + local notifications): one countdown at a time, driven by a 1 s tick.
+    @State private var secondsLeft = 0
+    @State private var timerRunning = false
+    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Cook Mode").font(.title3).bold()
@@ -214,6 +221,10 @@ struct CookPane: View {
                         .textSelection(.enabled)
                 }
 
+                if let timer = step.timer {
+                    timerChip(timer)
+                }
+
                 Spacer()
                 HStack {
                     Button("Previous") { model.stepIndex = max(0, model.stepIndex - 1) }
@@ -229,6 +240,38 @@ struct CookPane: View {
             }
         }
         .padding()
+        .onChange(of: model.stepIndex) {
+            secondsLeft = 0
+            timerRunning = false
+        }
+        .onReceive(tick) { _ in
+            guard timerRunning else { return }
+            if secondsLeft > 0 { secondsLeft -= 1 }
+            if secondsLeft == 0 { timerRunning = false }
+        }
+    }
+
+    /// The step's detected timer, same detection the phone runs. The countdown itself is a
+    /// simple local stand-in — start, pause, and a m:ss readout.
+    @ViewBuilder
+    private func timerChip(_ timer: DetectedTimer) -> some View {
+        HStack(spacing: 10) {
+            Label(timer.label + (timer.isPerSide ? " per side" : ""), systemImage: "timer")
+                .font(.callout)
+            if secondsLeft > 0 {
+                Text(String(format: "%d:%02d", secondsLeft / 60, secondsLeft % 60))
+                    .font(.callout.monospacedDigit()).bold()
+            }
+            Button(timerRunning ? "Pause" : (secondsLeft > 0 ? "Resume" : "Start")) {
+                if !timerRunning && secondsLeft == 0 { secondsLeft = timer.seconds }
+                timerRunning.toggle()
+            }
+            .controlSize(.small)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var currentPart: String? {

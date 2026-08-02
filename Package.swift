@@ -1,7 +1,7 @@
 // swift-tools-version: 5.9
 //
 // SousChefDesk — a macOS harness that compiles the iPhone app's ACTUAL extraction code
-// (Sources/SousChef/Extraction + Scaling + Conversion, minus one SwiftData-only file) into a
+// (Sources/SousChef/Extraction + Scaling + Conversion + the recipe models) into a
 // three-pane desktop app: URL input → extracted-recipe review → cook-mode display. It exists
 // so any problem post can be debugged with the real pipeline — real fetch ladders, real
 // Vision OCR, real parsers — without an Xcode build-and-deploy to a phone.
@@ -26,10 +26,6 @@ let package = Package(
             name: "SousChefDesk",
             dependencies: ["SwiftSoup"],
             path: "Sources",
-            exclude: [
-                // Cook Mode-only annotator; the sole SwiftData dependency in the tree.
-                "SousChef/Extraction/IngredientAnnotator.swift",
-            ],
             sources: [
                 "SousChef/Extraction",
                 "SousChef/Scaling",
