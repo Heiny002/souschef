@@ -34,6 +34,9 @@ let package = Package(
                 "SousChef/Extraction",
                 "SousChef/Scaling",
                 "SousChef/Conversion",
+                // IngredientConverter renders the SwiftData Ingredient model directly; the
+                // models file is self-contained (Foundation + SwiftData, both on macOS 14).
+                "SousChef/Models/Recipe.swift",
                 "SousChefDesk",
             ],
             resources: [

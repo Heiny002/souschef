@@ -79,4 +79,10 @@ jobs:
         # The desktop harness compiles the app's actual extraction sources via SPM.
         # A build here guarantees the shared code stays macOS-compatible (no stray
         # UIKit/SwiftData creep into the extraction layer) and the harness never rots.
-        run: swift build 2>&1 | tail -40
+        #
+        # pipefail is NOT on in the default Actions shell, so without it this step
+        # reports `tail`'s exit code and a broken build sails through green — which
+        # is exactly what happened on the first desk-build run.
+        run: |
+          set -o pipefail
+          swift build 2>&1 | tail -60
