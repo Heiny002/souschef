@@ -49,6 +49,16 @@ enum IngredientAnnotator {
             // ("oil" inside a matched "olive oil").
             guard !claimed.contains(where: { $0.overlaps(range) }) else { continue }
 
+            // A mention that already carries its amount must not be annotated again —
+            // the parser's bulleted spice lists ("• 1/2 tbsp paprika") and inline amounts
+            // ("add 2 tbsp of olive oil") both put the quantity just before the name.
+            // The cook has the number either way; count it as this ingredient's mention.
+            if hasAmountJustBefore(range.lowerBound, in: result) {
+                mentioned.insert(key)
+                claimed.append(range)
+                continue
+            }
+
             let measurement = formatMeasurement(ingredient)
             guard !measurement.isEmpty else { continue }
 
@@ -61,6 +71,24 @@ enum IngredientAnnotator {
             result.insert(contentsOf: insertion.text, at: insertion.at)
         }
         return result
+    }
+
+    /// True when a numeral (including vulgar fractions like ½ — `Character.isNumber`
+    /// covers them) sits within a few characters before `index` on the same line. That's
+    /// the shape of an amount directly preceding an ingredient name — "1/2 tbsp paprika",
+    /// "2 tbsp of olive oil" — and the window is short enough that a number elsewhere in
+    /// the sentence ("air fry at 400F, then add the salt") doesn't suppress annotation.
+    private static func hasAmountJustBefore(_ index: String.Index, in text: String) -> Bool {
+        var cursor = index
+        var lookback = 0
+        while cursor > text.startIndex && lookback < 16 {
+            cursor = text.index(before: cursor)
+            let ch = text[cursor]
+            if ch == "\n" { return false }
+            if ch.isNumber { return true }
+            lookback += 1
+        }
+        return false
     }
 
     /// Find ingredient name in text, handling singular/plural.

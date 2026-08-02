@@ -82,6 +82,35 @@ final class CrashHardeningTests: XCTestCase {
                        + "and salt until you have a nice dough.")
     }
 
+    func testAnnotationSkipsBulletedMentionsThatCarryTheirAmount() {
+        // The steak step that exposed this: the parser's bulleted spice list already
+        // carries each amount, and the annotator was appending it again —
+        // "• 1/2 tbsp paprika (1/2 tbsp)". The sentence-level mentions (no amount
+        // nearby) must still be annotated; "400F for 10 minutes" further along the
+        // line must not suppress them.
+        let out = IngredientAnnotator.annotate(
+            ["Season steak with olive oil and spices, then air fry at 400F for 10 minutes.\n"
+             + "• 1/2 tbsp paprika\n• 1/2 tbsp garlic powder"],
+            with: [ingredient("garlic powder", qty: "1/2", unit: "tbsp"),
+                   ingredient("olive oil", qty: "1", unit: "tsp"),
+                   ingredient("paprika", qty: "1/2", unit: "tbsp"),
+                   ingredient("steak", qty: "1.25", unit: "lb")]
+        )
+        XCTAssertEqual(out.first,
+                       "Season steak (1.25 lb) with olive oil (1 tsp) and spices, "
+                       + "then air fry at 400F for 10 minutes.\n"
+                       + "• 1/2 tbsp paprika\n• 1/2 tbsp garlic powder")
+    }
+
+    func testAnnotationSkipsInlineMentionsThatCarryTheirAmount() {
+        // "add 2 tbsp of soy sauce" already tells the cook the amount.
+        let out = IngredientAnnotator.annotate(
+            ["Add 2 tbsp of soy sauce and stir."],
+            with: [ingredient("soy sauce", qty: "2", unit: "tbsp")]
+        )
+        XCTAssertEqual(out.first, "Add 2 tbsp of soy sauce and stir.")
+    }
+
     func testAnnotationHeadNounRespectsShortWordGuard() {
         // "olive oil" must NOT gain an "oil" head-noun variant (≤3 chars) — a bare "oil"
         // mention could belong to a different fat entirely.
