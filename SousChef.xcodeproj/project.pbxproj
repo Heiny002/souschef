@@ -84,6 +84,7 @@
 		FEED0000000000000000CE21 /* DOMTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CE22 /* DOMTextExtractor.swift */; };
 		FEED0000000000000000CE41 /* TimerDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CE42 /* TimerDetector.swift */; };
 		FEED0000000000000000CE51 /* XcconfigSecrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CE52 /* XcconfigSecrets.swift */; };
+		FEED0000000000000000CE61 /* VideoFrameTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000CE62 /* VideoFrameTextExtractor.swift */; };
 		FEED0000000000000000DE01 /* RecipeScaling.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000DE02 /* RecipeScaling.swift */; };
 		FEED0000000000000000EF11 /* ServingSizeInferrer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000EF12 /* ServingSizeInferrer.swift */; };
 		A71D307287F47F12A1420796 /* TranscriptLLMValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9ACA7716EC503F142D4F8B /* TranscriptLLMValidator.swift */; };
@@ -129,6 +130,7 @@
 		FEED0000000000000000CE22 /* DOMTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DOMTextExtractor.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CE42 /* TimerDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerDetector.swift; sourceTree = "<group>"; };
 		FEED0000000000000000CE52 /* XcconfigSecrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XcconfigSecrets.swift; sourceTree = "<group>"; };
+		FEED0000000000000000CE62 /* VideoFrameTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoFrameTextExtractor.swift; sourceTree = "<group>"; };
 		FEED0000000000000000DE02 /* RecipeScaling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeScaling.swift; sourceTree = "<group>"; };
 		FEED0000000000000000EF12 /* ServingSizeInferrer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServingSizeInferrer.swift; sourceTree = "<group>"; };
 		07D492E365A4AB46C47203BF /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
@@ -500,6 +502,7 @@
 				FEED0000000000000000CE22 /* DOMTextExtractor.swift */,
 				FEED0000000000000000CE42 /* TimerDetector.swift */,
 				FEED0000000000000000CE52 /* XcconfigSecrets.swift */,
+				FEED0000000000000000CE62 /* VideoFrameTextExtractor.swift */,
 				82FF8F6B3A0D2953DB61A55C /* MicrodataExtractor.swift */,
 				D6E7F8091A2B3C4D5E6F7081 /* IngredientAnnotator.swift */,
 				7560654AFD354C4655DEEC21 /* MicroStepSplitter.swift */,
@@ -674,6 +677,7 @@
 				FEED0000000000000000CE21 /* DOMTextExtractor.swift in Sources */,
 				FEED0000000000000000CE41 /* TimerDetector.swift in Sources */,
 				FEED0000000000000000CE51 /* XcconfigSecrets.swift in Sources */,
+				FEED0000000000000000CE61 /* VideoFrameTextExtractor.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* IngredientAnnotator.swift in Sources */,
 				9E4BF5BA4F11E86F358EF5FF /* MicroStepSplitter.swift in Sources */,
 				FEED0000000000000000AA01 /* StepSequencer.swift in Sources */,

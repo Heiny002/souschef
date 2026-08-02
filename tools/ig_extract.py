@@ -390,6 +390,18 @@ def comments_report(code, cookies):
     for i, t in enumerate(texts[:6]):
         flat = " ".join(t.split())
         print(f"  [{i}] {len(t)} chars: {flat[:100]}{'…' if len(flat) > 100 else ''}")
+
+    # Video probe: which frame-OCR input exists, and whether Instagram exposes any
+    # subtitle track we could fetch instead of OCRing frames (cheaper if it ever appears).
+    vv = first.get("video_versions") or []
+    if vv:
+        best = max(vv, key=lambda v: (v.get("width") or 0) * (v.get("height") or 0))
+        print(f"  video_versions: {len(vv)} (best {best.get('width')}x{best.get('height')})")
+    subtitle_keys = [k for k in first.keys() if "subtitle" in k.lower() or "transcri" in k.lower()]
+    if subtitle_keys:
+        print(f"  subtitle-ish media-info keys: {subtitle_keys}")
+        for k in subtitle_keys:
+            print(f"    {k} = {str(first.get(k))[:120]}")
     return texts
 
 

@@ -752,6 +752,32 @@ final class ExtractionCharacterizationTests: XCTestCase {
         )
     }
 
+    // MARK: - Video frame OCR (burned-in captions)
+
+    func testMergeFrameTextsDropsRepeatsAcrossFrames() {
+        // Captions persist across sampled frames and the handle watermark is on ALL of
+        // them; the merge keeps first-seen order and drops repeats, tolerating OCR jitter
+        // in case and punctuation.
+        let merged = VideoFrameTextExtractor.mergeFrameTexts([
+            "@creatorhandle\nMix the flour and yogurt",
+            "@creatorhandle\nMix the flour and yogurt.",
+            "@creatorhandle\nmix the  flour and yogurt\nAir fry at 400F",
+            "@creatorhandle\nAir fry at 400F!",
+        ])
+        XCTAssertEqual(merged, "@creatorhandle\nMix the flour and yogurt\nAir fry at 400F")
+    }
+
+    func testVideoURLPicksLargestVersion() {
+        let item: [String: Any] = ["video_versions": [
+            ["url": "https://cdn.example/low.mp4", "width": 480, "height": 854],
+            ["url": "https://cdn.example/high.mp4", "width": 1080, "height": 1920],
+            ["url": "https://cdn.example/mid.mp4", "width": 720, "height": 1280],
+        ]]
+        XCTAssertEqual(InstagramAuth.videoURL(fromMediaItem: item)?.absoluteString,
+                       "https://cdn.example/high.mp4")
+        XCTAssertNil(InstagramAuth.videoURL(fromMediaItem: ["no": "video"]))
+    }
+
     func testPKStringNormalizesNumbersAndStrings() {
         XCTAssertEqual(InstagramAuth.pkString(123), "123")
         XCTAssertEqual(InstagramAuth.pkString("123"), "123")

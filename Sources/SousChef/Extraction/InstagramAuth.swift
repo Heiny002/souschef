@@ -239,6 +239,28 @@ enum InstagramAuth {
         return nil
     }
 
+    // MARK: - Video URL (for burned-in-caption OCR)
+
+    /// Highest-resolution video URL for a video post — nil for image posts or without a
+    /// session. Feeds the frame-OCR rung that reads burned-in captions.
+    static func fetchVideoURL(shortcode: String) async -> URL? {
+        guard let info = await fetchMediaInfo(shortcode: shortcode),
+              let items = info["items"] as? [[String: Any]], let first = items.first
+        else { return nil }
+        return videoURL(fromMediaItem: first)
+    }
+
+    /// Best video_versions candidate by pixel area. Pure + testable.
+    static func videoURL(fromMediaItem item: [String: Any]) -> URL? {
+        guard let versions = item["video_versions"] as? [[String: Any]] else { return nil }
+        let best = versions.max { a, b in
+            ((a["width"] as? Int) ?? 0) * ((a["height"] as? Int) ?? 0)
+                < ((b["width"] as? Int) ?? 0) * ((b["height"] as? Int) ?? 0)
+        }
+        guard let urlString = best?["url"] as? String else { return nil }
+        return URL(string: urlString)
+    }
+
     // MARK: - Authed plumbing
 
     /// The raw media-info payload — shared by the caption, carousel, and comment readers.

@@ -318,6 +318,35 @@ actor ExtractionPipeline {
             }
         }
 
+        // Step 3.4: burned-in captions. Many reels narrate the method and caption the
+        // narration ON SCREEN, leaving the written caption a hook — the recipe's steps
+        // exist only as pixels. Sample the video's frames and OCR them (on-device, free).
+        // Costliest deterministic rung (a video download + decode), so it runs last and
+        // only when everything cheaper still hasn't produced a trustworthy recipe.
+        // carouselText empty ⇒ not a slide post, so a video is what's left to try.
+        var videoCaptionText = ""
+        var frameOCRWon = false
+        if !result.isViable || result.confidence < ConfidenceThreshold.accept,
+           carouselText.isEmpty,
+           URLRouter.classify(urlString) == .instagram,
+           let shortcode = VideoMetadataFetcher.instagramShortcode(from: urlString),
+           let videoURL = await InstagramAuth.fetchVideoURL(shortcode: shortcode) {
+            videoCaptionText = await VideoFrameTextExtractor.extractText(videoURL: videoURL,
+                                                                         progress: progress)
+            debugTrace.append("video frame OCR: \(videoCaptionText.count) chars")
+            if !videoCaptionText.isEmpty {
+                // Burned captions are spoken-style prose — the transcript extractor's shape.
+                let fromFrames = TranscriptExtractor().extract(transcript: videoCaptionText)
+                if Self.completeness(fromFrames) > Self.completeness(result) {
+                    result = fromFrames
+                    commentWon = false
+                    frameOCRWon = true
+                    debugTrace.append("frame OCR parse won: \(fromFrames.ingredients.count) "
+                                      + "ingredients, \(fromFrames.steps.count) steps")
+                }
+            }
+        }
+
         // Step 3.5: LLM caption structuring (Option A). Rule-based parsing hits a ceiling on
         // messy social captions — run-on ingredient groups under sub-labels, inline-numbered
         // steps, marketing narrative and hashtags — and can produce a viable-but-wrong split.
@@ -329,8 +358,17 @@ actor ExtractionPipeline {
         // back ragged (line breaks mid-sentence, headers split from their lists), which is
         // exactly the mess the structurer handles better than the rule-based parser.
         let usingCaption = captionText.count >= 40
-        let textToStructure = usingCaption ? captionText
-            : (!carouselText.isEmpty ? carouselText : commentText)
+        // A recipe often arrives SPLIT across sources — ingredients in the creator's
+        // comment, steps in the on-screen captions, a partial list in the written caption.
+        // Hand the structurer everything the rungs recovered, joined, so it can assemble
+        // the whole from the parts; no supplementary text reduces to the old caption-only
+        // behavior. (When the caption parse was already trustworthy, none of the rungs
+        // ran and this IS just the caption.)
+        let supplementaryText = [carouselText, commentText, videoCaptionText]
+            .filter { !$0.isEmpty }.joined(separator: "\n\n")
+        let textToStructure = supplementaryText.isEmpty
+            ? (usingCaption ? captionText : "")
+            : ((usingCaption ? captionText + "\n\n" : "") + supplementaryText)
         // A detected collection never goes to the structurer: each slide already parsed to a
         // complete recipe, and the model would be handed the JOINED text — reproducing the
         // exact merged-recipes mess the per-slide detection exists to prevent.
@@ -340,12 +378,12 @@ actor ExtractionPipeline {
             // output was usually discarded by the completeness guard below anyway. The gate
             // only applies to the CAPTION parse: carousel OCR text comes back ragged and
             // legitimately needs the structurer, so it is never skipped.
-            if usingCaption, let captionParse,
+            if usingCaption, supplementaryText.isEmpty, let captionParse,
                Self.shouldSkipStructurer(deterministic: captionParse.result,
                                          audit: captionParse.audit,
                                          caption: captionText) {
                 debugTrace.append("LLM structurer: skipped — deterministic caption parse is trustworthy")
-            } else if !usingCaption, carouselText.isEmpty, let commentParse,
+            } else if !usingCaption, supplementaryText == commentText, let commentParse,
                       Self.shouldSkipStructurer(deterministic: commentParse.result,
                                                 audit: commentParse.audit,
                                                 caption: commentText) {
@@ -374,7 +412,8 @@ actor ExtractionPipeline {
         // / preview routes do this). Flag it so review shows a banner rather than silently
         // saving half a recipe. Only meaningful when the caption is the source, so skip it once
         // slide OCR or a creator comment supplied the recipe instead.
-        if carouselText.isEmpty, !commentWon, TruncationDetector.isLikelyTruncated(captionText) {
+        if carouselText.isEmpty, !commentWon, !frameOCRWon,
+           TruncationDetector.isLikelyTruncated(captionText) {
             result.wasTruncated = true
         }
 
