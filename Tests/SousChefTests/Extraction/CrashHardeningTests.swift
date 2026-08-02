@@ -66,6 +66,32 @@ final class CrashHardeningTests: XCTestCase {
         XCTAssertEqual(out.first, "Warm the olive oil (2 tbsp).")
     }
 
+    func testAnnotationMatchesHeadNounOfMultiWordItems() {
+        // The flatbread reel that exposed this: steps shorten "self-raising flour" to
+        // "flour" and "Greek yogurt" to "yogurt". Only "baking powder" — the one name the
+        // step used verbatim — was annotated before head-noun matching existed.
+        let out = IngredientAnnotator.annotate(
+            ["Mix flour, yogurt, baking powder, and salt until you have a nice dough."],
+            with: [ingredient("self-raising flour", qty: "1", unit: "cup"),
+                   ingredient("greek yogurt", qty: "1", unit: "cup"),
+                   ingredient("baking powder", qty: "1/2", unit: "tsp"),
+                   ingredient("salt", qty: nil, unit: nil)]  // no amount → stays bare
+        )
+        XCTAssertEqual(out.first,
+                       "Mix flour (1 cup), yogurt (1 cup), baking powder (1/2 tsp), "
+                       + "and salt until you have a nice dough.")
+    }
+
+    func testAnnotationHeadNounRespectsShortWordGuard() {
+        // "olive oil" must NOT gain an "oil" head-noun variant (≤3 chars) — a bare "oil"
+        // mention could belong to a different fat entirely.
+        let out = IngredientAnnotator.annotate(
+            ["Rub with oil before grilling."],
+            with: [ingredient("olive oil", qty: "2", unit: "tbsp")]
+        )
+        XCTAssertEqual(out.first, "Rub with oil before grilling.")
+    }
+
     // MARK: - SSRF: WebPageFetcher.isAllowed
 
     private func allowed(_ s: String) -> Bool {

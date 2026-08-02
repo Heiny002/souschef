@@ -75,30 +75,46 @@ enum IngredientAnnotator {
         return nil
     }
 
-    /// Generate matching variants: exact, singular/plural, and first-word for multi-word items.
+    /// Generate matching variants: exact and singular/plural first, then — for multi-word
+    /// items — the first word ("garlic cloves" → "garlic") and the head noun ("self-raising
+    /// flour" → "flour", "Greek yogurt" → "yogurt"). Steps almost always shorten an
+    /// ingredient to one of those two, and before the head-noun variant existed, "Mix flour,
+    /// yogurt, and baking powder" only annotated baking powder — the one name that appears
+    /// verbatim. Full-phrase variants stay first so they always win over a word fragment.
     private static func nameVariants(_ item: String) -> [String] {
         var variants = [item]
+        variants.append(contentsOf: pluralVariants(item))
 
-        // Plural ↔ singular
-        if item.hasSuffix("ies") {
-            variants.append(String(item.dropLast(3)) + "y")  // berries → berry
-        } else if item.hasSuffix("es") {
-            variants.append(String(item.dropLast(2)))         // tomatoes → tomato
-            variants.append(String(item.dropLast(1)))         // cloves → clov… fallback
-        } else if item.hasSuffix("s") {
-            variants.append(String(item.dropLast()))          // carrots → carrot
-        } else {
-            variants.append(item + "s")                       // carrot → carrots
-            variants.append(item + "es")                      // tomato → tomatoes
-        }
-
-        // For multi-word items like "garlic cloves", also try the first word
         let words = item.split(separator: " ")
-        if words.count > 1, let first = words.first, first.count > 3 {
-            variants.append(String(first))
+        if words.count > 1 {
+            if let first = words.first, first.count > 3 {
+                variants.append(String(first))
+            }
+            // The length guard keeps short generic heads ("olive oil" → "oil") from
+            // annotating some unrelated mention.
+            if let last = words.last, last.count > 3, last != words.first {
+                variants.append(String(last))
+                variants.append(contentsOf: pluralVariants(String(last)))
+            }
         }
 
         return variants
+    }
+
+    /// Plural ↔ singular counterparts of a term.
+    private static func pluralVariants(_ term: String) -> [String] {
+        if term.hasSuffix("ies") {
+            return [String(term.dropLast(3)) + "y"]           // berries → berry
+        }
+        if term.hasSuffix("es") {
+            return [String(term.dropLast(2)),                 // tomatoes → tomato
+                    String(term.dropLast(1))]                 // cloves → clov… fallback
+        }
+        if term.hasSuffix("s") {
+            return [String(term.dropLast())]                  // carrots → carrot
+        }
+        return [term + "s",                                   // carrot → carrots
+                term + "es"]                                  // tomato → tomatoes
     }
 
     /// Find a word-boundary match, returning a `String.Index` range in `text`.
