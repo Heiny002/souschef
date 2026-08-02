@@ -333,6 +333,66 @@ def fetch_api_v1(code, cookies):
         return None, f"parse error: {e}"
 
 
+def _pk_str(value):
+    """Mirror of InstagramAuth.pkString — pks arrive as int or string depending on route."""
+    if value is None:
+        return None
+    return str(value)
+
+
+def creator_comment_texts(comments, owner_pk):
+    """Mirror of InstagramAuth.creatorCommentTexts — only the post owner's comments count."""
+    out = []
+    for c in comments or []:
+        if _pk_str((c.get("user") or {}).get("pk")) != owner_pk:
+            continue
+        text = (c.get("text") or "").strip()
+        if text:
+            out.append(c.get("text"))
+    return out
+
+
+def comments_report(code, cookies):
+    """Mirror of InstagramAuth.fetchCreatorComments: media info → owner pk → comments
+    endpoint filtered to the creator, preview_comments as fallback."""
+    print("\n=== CREATOR COMMENTS (recipe-in-comments rung) ===")
+    if "sessionid" not in cookies:
+        print("  (needs cookies with sessionid — skipped)")
+        return
+    mid = shortcode_to_media_id(code)
+    headers = {"User-Agent": UA, "X-IG-App-ID": "936619743392459",
+               "Referer": f"https://www.instagram.com/p/{code}/",
+               "Accept": "application/json"}
+    if "csrftoken" in cookies:
+        headers["X-CSRFToken"] = cookies["csrftoken"]
+    try:
+        info = json.loads(_read(_http_get(
+            f"https://www.instagram.com/api/v1/media/{mid}/info/", headers, cookies)
+        ).decode("utf-8", "ignore"))
+        first = (info.get("items") or [{}])[0]
+        owner = _pk_str((first.get("user") or {}).get("pk"))
+    except Exception as e:
+        print(f"  media info failed: {e}")
+        return
+    texts = []
+    try:
+        payload = json.loads(_read(_http_get(
+            f"https://www.instagram.com/api/v1/media/{mid}/comments/?can_support_threading=true",
+            headers, cookies)).decode("utf-8", "ignore"))
+        texts = creator_comment_texts(payload.get("comments"), owner)
+    except Exception as e:
+        print(f"  comments endpoint failed: {e}")
+    if not texts:
+        texts = creator_comment_texts(first.get("preview_comments"), owner)
+        if texts:
+            print("  (from media-info preview_comments fallback)")
+    print(f"  creator comments: {len(texts)}")
+    for i, t in enumerate(texts[:6]):
+        flat = " ".join(t.split())
+        print(f"  [{i}] {len(t)} chars: {flat[:100]}{'…' if len(flat) > 100 else ''}")
+    return texts
+
+
 def dump_raw(code, cookies):
     """Print raw response snippets so we can see what Instagram actually returns and fix
     the parser / doc_id accordingly."""
@@ -899,9 +959,16 @@ def main():
             caption = cap
 
     carousel_report(code, cookies)
+    comment_texts = comments_report(code, cookies) or []
 
     if caption:
         show_recipe(caption)
+    # The app parses each creator comment independently and keeps the best — here we just
+    # show the parse of the longest one so the desktop verdict matches what the rung sees.
+    if comment_texts:
+        longest = max(comment_texts, key=len)
+        print("\n=== PARSE OF LONGEST CREATOR COMMENT ===")
+        show_recipe(longest)
     else:
         print("\nNo caption retrieved by any route.")
         print("If you're logged out, pass --cookies cookies.txt. If you ARE logged in and it")

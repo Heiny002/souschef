@@ -181,8 +181,11 @@ actor ExtractionPipeline {
 
         // No caption and no transcript is only a dead end when there are no slide images
         // either — a TikTok photo post can carry its whole recipe in the slides, and this
-        // early return used to fire before the OCR step ever saw them.
-        guard !fullText.isEmpty || !(metadata?.imageURLs ?? []).isEmpty else {
+        // early return used to fire before the OCR step ever saw them. Instagram posts
+        // always continue: their slide URLs are fetched later (InstagramAuth, not the
+        // metadata), and the creator-comment rung can still hold the recipe.
+        guard !fullText.isEmpty || !(metadata?.imageURLs ?? []).isEmpty
+                || URLRouter.classify(urlString) == .instagram else {
             var empty = ExtractionResult(extractionMethod: "video-no-transcript")
             empty.title = titleHint
             empty.confidence = 0.1
@@ -242,6 +245,17 @@ actor ExtractionPipeline {
             default:
                 break
             }
+            // Step 3.25: cover-image OCR. A single video post has no slides, but the recipe
+            // card is often the cover image itself. The thumbnail is already on the metadata
+            // and the OCR triage pass rejects a plain food photo almost for free.
+            if slideTexts.isEmpty, let thumb = metadata?.thumbnailURL, let url = URL(string: thumb) {
+                let coverTexts = await CarouselTextExtractor.extractSlideTexts(imageURLs: [url],
+                                                                              progress: progress)
+                if !coverTexts.isEmpty {
+                    slideTexts = coverTexts
+                    debugTrace.append("cover OCR: \(coverTexts[0].count) chars")
+                }
+            }
             carouselText = CarouselTextExtractor.combine(slideTexts)
             // 0 text slides on a carousel post means the slide-URL fetch came back empty
             // (session/auth rung) or no slide had readable text — this line tells us which
@@ -271,6 +285,39 @@ actor ExtractionPipeline {
             }
         }
 
+        // Step 3.3: creator comments. "Recipe in the comments" is one of Instagram's most
+        // common patterns — the caption is a hook and the recipe sits in the creator's own
+        // pinned or first comment. Only the CREATOR's comments are fetched (see
+        // InstagramAuth); each parses independently through the exact caption path, because
+        // the recipe is ONE comment, not a join of all of them. Same trustworthiness gate
+        // as slide OCR: a confident parse from caption or slides skips the extra request.
+        var commentText = ""
+        var commentParse: (result: ExtractionResult, audit: PastedTextExtractor.ParseAudit)?
+        var commentWon = false
+        if !result.isViable || result.confidence < ConfidenceThreshold.accept,
+           URLRouter.classify(urlString) == .instagram,
+           let shortcode = VideoMetadataFetcher.instagramShortcode(from: urlString) {
+            progress?("Checking the creator's comments…")
+            let comments = await InstagramAuth.fetchCreatorComments(shortcode: shortcode)
+            debugTrace.append("creator comments: \(comments.count)")
+            for comment in comments {
+                let cleaned = Self.cleanCaptionForParsing(comment)
+                guard !cleaned.isEmpty else { continue }
+                let parsed = PastedTextExtractor().extractWithAudit(text: cleaned)
+                if commentParse == nil
+                    || Self.completeness(parsed.result) > Self.completeness(commentParse!.result) {
+                    commentParse = parsed
+                    commentText = cleaned
+                }
+            }
+            if let best = commentParse, Self.completeness(best.result) > Self.completeness(result) {
+                result = best.result
+                commentWon = true
+                debugTrace.append("comment parse won: \(best.result.ingredients.count) ingredients, "
+                                  + "\(best.result.steps.count) steps")
+            }
+        }
+
         // Step 3.5: LLM caption structuring (Option A). Rule-based parsing hits a ceiling on
         // messy social captions — run-on ingredient groups under sub-labels, inline-numbered
         // steps, marketing narrative and hashtags — and can produce a viable-but-wrong split.
@@ -282,7 +329,8 @@ actor ExtractionPipeline {
         // back ragged (line breaks mid-sentence, headers split from their lists), which is
         // exactly the mess the structurer handles better than the rule-based parser.
         let usingCaption = captionText.count >= 40
-        let textToStructure = usingCaption ? captionText : carouselText
+        let textToStructure = usingCaption ? captionText
+            : (!carouselText.isEmpty ? carouselText : commentText)
         // A detected collection never goes to the structurer: each slide already parsed to a
         // complete recipe, and the model would be handed the JOINED text — reproducing the
         // exact merged-recipes mess the per-slide detection exists to prevent.
@@ -297,6 +345,13 @@ actor ExtractionPipeline {
                                          audit: captionParse.audit,
                                          caption: captionText) {
                 debugTrace.append("LLM structurer: skipped — deterministic caption parse is trustworthy")
+            } else if !usingCaption, carouselText.isEmpty, let commentParse,
+                      Self.shouldSkipStructurer(deterministic: commentParse.result,
+                                                audit: commentParse.audit,
+                                                caption: commentText) {
+                // Comments are typed text like captions, so the same skip-gate applies —
+                // a clean "Ingredients:/Steps:" comment doesn't need a paid call.
+                debugTrace.append("LLM structurer: skipped — deterministic comment parse is trustworthy")
             } else {
                 progress?("Structuring the recipe…")
                 let structurer = LLMCaptionStructurer(apiKey: apiKey)
@@ -318,8 +373,8 @@ actor ExtractionPipeline {
         // Truncation honesty: a caption that ends in an ellipsis arrived cut off (og:description
         // / preview routes do this). Flag it so review shows a banner rather than silently
         // saving half a recipe. Only meaningful when the caption is the source, so skip it once
-        // slide OCR supplied the recipe instead.
-        if carouselText.isEmpty, TruncationDetector.isLikelyTruncated(captionText) {
+        // slide OCR or a creator comment supplied the recipe instead.
+        if carouselText.isEmpty, !commentWon, TruncationDetector.isLikelyTruncated(captionText) {
             result.wasTruncated = true
         }
 

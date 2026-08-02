@@ -732,4 +732,32 @@ final class ExtractionCharacterizationTests: XCTestCase {
         XCTAssertEqual(IngredientParser().parse(raw: "2–3 cloves garlic").quantity, "2-3",
                        "en dash normalizes to ASCII")
     }
+
+    // MARK: - Creator comments ("recipe in the comments" rung)
+
+    func testCreatorCommentFilterKeepsOnlyOwnerTexts() {
+        // pks arrive as Int on some routes and String on others — both must compare equal
+        // to the owner. Other users' comments (including recipe-looking ones) are dropped,
+        // as are blank creator comments.
+        let comments: [[String: Any]] = [
+            ["user": ["pk": 123], "text": "INGREDIENTS:\n1 cup flour\n1 cup greek yogurt"],
+            ["user": ["pk": "456"], "text": "Ingredients: 2 cups sugar (not the creator!)"],
+            ["user": ["pk": "123"], "text": "Bake at 350F for 20 minutes."],
+            ["user": ["pk": 123], "text": "   "],
+            ["text": "no user field"],
+        ]
+        XCTAssertEqual(
+            InstagramAuth.creatorCommentTexts(fromComments: comments, ownerPK: "123"),
+            ["INGREDIENTS:\n1 cup flour\n1 cup greek yogurt", "Bake at 350F for 20 minutes."]
+        )
+    }
+
+    func testPKStringNormalizesNumbersAndStrings() {
+        XCTAssertEqual(InstagramAuth.pkString(123), "123")
+        XCTAssertEqual(InstagramAuth.pkString("123"), "123")
+        XCTAssertEqual(InstagramAuth.pkString(NSNumber(value: Int64(9_007_199_254_740_995))),
+                       "9007199254740995", "64-bit pks must not round-trip through Double")
+        XCTAssertNil(InstagramAuth.pkString(nil))
+        XCTAssertNil(InstagramAuth.pkString(""))
+    }
 }

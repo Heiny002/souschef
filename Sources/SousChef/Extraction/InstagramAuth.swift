@@ -187,12 +187,73 @@ enum InstagramAuth {
         }
     }
 
-    /// The raw media-info payload — shared by the caption and carousel readers.
-    private static func fetchMediaInfo(shortcode: String) async -> [String: Any]? {
-        let cookies = await sessionCookies()
-        guard cookies.contains(where: { $0.name == "sessionid" && !$0.value.isEmpty }),
+    // MARK: - Creator comments
+
+    /// Comment texts authored by the post's CREATOR (pinned/first comments included), in
+    /// the order Instagram returns them. "Recipe in the comments" is one of the most common
+    /// Instagram patterns — the caption is a hook and the recipe lives in the creator's own
+    /// comment. Only the creator's comments are read: everyone else's are noise and
+    /// occasionally adversarial. Empty when not connected or the fetch fails.
+    static func fetchCreatorComments(shortcode: String) async -> [String] {
+        guard let info = await fetchMediaInfo(shortcode: shortcode),
+              let items = info["items"] as? [[String: Any]], let first = items.first,
+              let owner = pkString((first["user"] as? [String: Any])?["pk"]),
               let mediaID = mediaID(fromShortcode: shortcode),
+              let url = URL(string:
+                "https://www.instagram.com/api/v1/media/\(mediaID)/comments/?can_support_threading=true")
+        else { return [] }
+
+        var texts: [String] = []
+        if let json = await authedJSON(url: url,
+                                       referer: "https://www.instagram.com/p/\(shortcode)/"),
+           let comments = json["comments"] as? [[String: Any]] {
+            texts = creatorCommentTexts(fromComments: comments, ownerPK: owner)
+        }
+        // The media-info payload carries a short comment preview — a lifeline if the
+        // comments endpoint's shape shifts under us.
+        if texts.isEmpty, let preview = first["preview_comments"] as? [[String: Any]] {
+            texts = creatorCommentTexts(fromComments: preview, ownerPK: owner)
+        }
+        // A creator rarely needs more than a couple of comments for a recipe; the cap
+        // bounds the downstream parse work on comment-happy accounts.
+        return Array(texts.prefix(6))
+    }
+
+    /// Filter a comments array down to the creator's own texts. Pure + testable.
+    static func creatorCommentTexts(fromComments comments: [[String: Any]],
+                                    ownerPK: String) -> [String] {
+        comments.compactMap { comment -> String? in
+            guard pkString((comment["user"] as? [String: Any])?["pk"]) == ownerPK,
+                  let text = comment["text"] as? String,
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return nil }
+            return text
+        }
+    }
+
+    /// Instagram serializes user pks inconsistently (number or string, 64-bit). Normalize
+    /// to a string so owner comparison works across payload variants.
+    static func pkString(_ value: Any?) -> String? {
+        if let s = value as? String { return s.isEmpty ? nil : s }
+        if let n = value as? NSNumber { return n.stringValue }
+        return nil
+    }
+
+    // MARK: - Authed plumbing
+
+    /// The raw media-info payload — shared by the caption, carousel, and comment readers.
+    private static func fetchMediaInfo(shortcode: String) async -> [String: Any]? {
+        guard let mediaID = mediaID(fromShortcode: shortcode),
               let url = URL(string: "https://www.instagram.com/api/v1/media/\(mediaID)/info/")
+        else { return nil }
+        return await authedJSON(url: url, referer: "https://www.instagram.com/p/\(shortcode)/")
+    }
+
+    /// GET an Instagram internal API URL with the user's session cookies. nil when not
+    /// connected, on a non-2xx, or on a non-JSON body.
+    private static func authedJSON(url: URL, referer: String) async -> [String: Any]? {
+        let cookies = await sessionCookies()
+        guard cookies.contains(where: { $0.name == "sessionid" && !$0.value.isEmpty })
         else { return nil }
 
         var request = URLRequest(url: url)
@@ -201,7 +262,7 @@ enum InstagramAuth {
         request.setValue(cookies.first { $0.name == "csrftoken" }?.value ?? "",
                          forHTTPHeaderField: "X-CSRFToken")
         request.setValue("936619743392459", forHTTPHeaderField: "X-IG-App-ID")
-        request.setValue("https://www.instagram.com/p/\(shortcode)/", forHTTPHeaderField: "Referer")
+        request.setValue(referer, forHTTPHeaderField: "Referer")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
